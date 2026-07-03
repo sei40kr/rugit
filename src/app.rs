@@ -57,7 +57,7 @@ pub enum PendingAction {
         args: Vec<String>,
         stdin: Option<String>,
     },
-    DeletePath(String),
+    DeletePaths(Vec<String>),
 }
 
 /// `git commit` must run with the terminal handed over to $EDITOR; the main
@@ -301,17 +301,26 @@ impl App {
         ) {
             match confirm.action {
                 PendingAction::Git { desc, args, stdin } => self.run_git_bg(desc, args, stdin),
-                PendingAction::DeletePath(path) => {
-                    let full = self.git.repo_root.join(&path);
-                    let result = if full.is_dir() {
-                        std::fs::remove_dir_all(&full)
-                    } else {
-                        std::fs::remove_file(&full)
-                    };
-                    match result {
-                        Ok(()) => self.message = Some(format!("deleted {path}")),
-                        Err(e) => self.message = Some(format!("delete failed: {e}")),
+                PendingAction::DeletePaths(paths) => {
+                    let mut deleted = 0;
+                    let mut last_err = None;
+                    for path in &paths {
+                        let full = self.git.repo_root.join(path);
+                        let result = if full.is_dir() {
+                            std::fs::remove_dir_all(&full)
+                        } else {
+                            std::fs::remove_file(&full)
+                        };
+                        match result {
+                            Ok(()) => deleted += 1,
+                            Err(e) => last_err = Some(e),
+                        }
                     }
+                    self.message = Some(match (last_err, paths.as_slice()) {
+                        (Some(e), _) => format!("deleted {deleted}, delete failed: {e}"),
+                        (None, [path]) => format!("deleted {path}"),
+                        (None, _) => format!("deleted {deleted} untracked file(s)"),
+                    });
                     self.refresh();
                 }
             }
@@ -500,7 +509,7 @@ impl App {
             } => {
                 self.confirm = Some(Confirm {
                     prompt: format!("Delete untracked {path}?"),
-                    action: PendingAction::DeletePath(path),
+                    action: PendingAction::DeletePaths(vec![path]),
                 });
             }
             SectionValue::File {
@@ -538,6 +547,54 @@ impl App {
                         desc: format!("discard hunk in {path}"),
                         args: svec(&["apply", "-R", "--recount", "--whitespace=nowarn"]),
                         stdin: Some(patch),
+                    },
+                });
+            }
+            SectionValue::Group(Group::Untracked) => {
+                let paths: Vec<String> = self
+                    .snapshot
+                    .as_ref()
+                    .map(|s| s.untracked.clone())
+                    .unwrap_or_default();
+                if paths.is_empty() {
+                    self.message = Some("nothing to discard here".into());
+                    return;
+                }
+                self.confirm = Some(Confirm {
+                    prompt: format!("Delete {} untracked file(s)?", paths.len()),
+                    action: PendingAction::DeletePaths(paths),
+                });
+            }
+            SectionValue::Group(Group::Unstaged) => {
+                self.confirm = Some(Confirm {
+                    prompt: "Discard all unstaged changes?".into(),
+                    action: PendingAction::Git {
+                        desc: "discard all unstaged".into(),
+                        args: svec(&["restore", "--", "."]),
+                        stdin: None,
+                    },
+                });
+            }
+            SectionValue::Group(Group::Staged) => {
+                // Restoring to HEAD wipes the index and worktree for the
+                // staged paths; without a HEAD there is nothing to restore to.
+                if !self.head_exists() {
+                    self.message = Some("nothing committed yet".into());
+                    return;
+                }
+                let paths = self.staged_paths();
+                if paths.is_empty() {
+                    self.message = Some("nothing to discard here".into());
+                    return;
+                }
+                let mut args = svec(&["restore", "--staged", "--worktree", "--"]);
+                args.extend(paths);
+                self.confirm = Some(Confirm {
+                    prompt: "Discard all staged changes?".into(),
+                    action: PendingAction::Git {
+                        desc: "discard all staged".into(),
+                        args,
+                        stdin: None,
                     },
                 });
             }
@@ -815,6 +872,22 @@ impl App {
             .as_ref()
             .map(|s| s.branch.oid.is_some())
             .unwrap_or(true)
+    }
+
+    /// All paths with staged changes, including the pre-rename path so a
+    /// `restore` reverts renames cleanly.
+    fn staged_paths(&self) -> Vec<String> {
+        let Some(s) = &self.snapshot else {
+            return Vec::new();
+        };
+        let mut paths = Vec::new();
+        for fd in &s.staged {
+            paths.push(fd.path.clone());
+            if let Some(old) = &fd.old_path {
+                paths.push(old.clone());
+            }
+        }
+        paths
     }
 
     /// Run a git mutation on a worker thread; completion triggers a refresh.

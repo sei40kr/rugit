@@ -126,16 +126,19 @@ pub fn build_status(t: &Theme, s: &StatusSnapshot) -> Section {
             group_heading(t, "Recent commits".to_string()),
         );
         for c in &s.recent {
+            let mut spans = vec![
+                Span::styled(c.hash.clone(), Style::new().fg(t.hash)),
+                Span::raw(" "),
+            ];
+            spans.extend(ref_spans(t, &c.refs));
+            spans.push(Span::raw(c.subject.clone()));
             g.children.push(Section::new(
                 g.id,
                 &format!("commit:{}", c.hash),
                 SectionValue::Commit {
                     hash: c.hash.clone(),
                 },
-                Line::from(vec![
-                    Span::styled(c.hash.clone(), Style::new().fg(t.hash)),
-                    Span::raw(format!(" {}", c.subject)),
-                ]),
+                Line::from(spans),
             ));
         }
         root.children.push(g);

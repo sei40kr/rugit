@@ -47,14 +47,8 @@ impl FileDiff {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CommitInfo {
-    pub hash: String,
-    pub subject: String,
-}
-
-/// One row of the log buffer, richer than `CommitInfo` (which only feeds the
-/// status "Recent commits" list).
+/// One row of the log buffer and of the status "Recent commits" list (which
+/// leaves `author`/`date` empty).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogEntry {
     /// Abbreviated hash.
@@ -98,5 +92,5 @@ pub struct StatusSnapshot {
     pub unstaged: Vec<FileDiff>,
     pub staged: Vec<FileDiff>,
     pub stashes: Vec<StashInfo>,
-    pub recent: Vec<CommitInfo>,
+    pub recent: Vec<LogEntry>,
 }

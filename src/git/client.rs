@@ -105,10 +105,10 @@ impl GitClient {
 
         let (head_summary, recent) = if st.branch.oid.is_some() {
             let summary = self.read(&["log", "-1", "--format=%h %s"])?;
-            let log = self.read(&["log", "-n", "10", "--format=%h\u{1f}%s"])?;
+            let log = self.read(&["log", "-n", "10", "--format=%h\u{1f}%D\u{1f}%s"])?;
             (
                 Some(summary.stdout.trim_end().to_string()),
-                parse::parse_log(&log.stdout),
+                parse::parse_log_entries(&log.stdout),
             )
         } else {
             (None, Vec::new())

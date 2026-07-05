@@ -1,7 +1,7 @@
 //! Pure parsers for git plumbing/porcelain output. No I/O here — everything is
 //! unit-testable against fixture strings.
 
-use super::types::{BranchInfo, CommitInfo, FileDiff, Hunk, LogEntry, StashInfo};
+use super::types::{BranchInfo, FileDiff, Hunk, LogEntry, StashInfo};
 
 /// Result of parsing `git status --porcelain=v2 --branch -z`.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -178,21 +178,9 @@ fn unquote(s: &str) -> String {
     out
 }
 
-/// Parse `git log --format=%h%x1f%s`.
-pub fn parse_log(text: &str) -> Vec<CommitInfo> {
-    text.lines()
-        .filter_map(|l| {
-            let (hash, subject) = l.split_once('\x1f')?;
-            Some(CommitInfo {
-                hash: hash.to_string(),
-                subject: subject.to_string(),
-            })
-        })
-        .collect()
-}
-
-/// Parse the log buffer's `--format=%h%x1f%D%x1f%s%x1f%an%x1f%ar` (one commit
-/// per line, fields separated by US, 0x1f). Missing trailing fields are empty.
+/// Parse `git log --format=%h%x1f%D%x1f%s%x1f%an%x1f%ar` (one commit per
+/// line, fields separated by US, 0x1f). Missing trailing fields are empty, so
+/// this also accepts the shorter `%h%x1f%D%x1f%s` used for recent commits.
 pub fn parse_log_entries(text: &str) -> Vec<LogEntry> {
     text.lines()
         .filter_map(|l| {
@@ -317,14 +305,7 @@ Binary files a/img.png and b/img.png differ
     }
 
     #[test]
-    fn log_and_stash() {
-        assert_eq!(
-            parse_log("abc123\x1ffix: thing\n"),
-            vec![CommitInfo {
-                hash: "abc123".into(),
-                subject: "fix: thing".into()
-            }]
-        );
+    fn stash_list() {
         assert_eq!(
             parse_stash_list("stash@{0}\x1fWIP on main\n"),
             vec![StashInfo {

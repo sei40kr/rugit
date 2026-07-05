@@ -11,6 +11,17 @@ use crate::ui::pane::Pane;
 
 use super::{svec, App, AppEvent};
 
+/// Rewrite the index's stat cache after a mutation, still on the worker
+/// thread. Reads run with `--no-optional-locks` and can never persist it, so
+/// once stat data goes stale (an external checkout, `touch`-ed files) every
+/// status/diff would re-hash the same files on every refresh — the dominant
+/// cost on a large worktree. This is a deliberate index write; the watcher
+/// event it triggers folds into the single-flight refresh. Exit status is
+/// meaningless here (1 just means some paths still differ).
+fn refresh_index_stat_cache(git: &crate::git::client::GitClient) {
+    let _ = git.run(&["update-index", "-q", "--refresh", "--unmerged"]);
+}
+
 /// Pretty-format for log rows, parsed by `parse::parse_log_entries`.
 const LOG_FORMAT: &str = "--format=%h%x1f%D%x1f%s%x1f%an%x1f%ar";
 /// How many commits the log buffer fetches (matches Magit's default).
@@ -40,6 +51,7 @@ impl App {
                     output: e.to_string(),
                 },
             };
+            refresh_index_stat_cache(&git);
             let _ = tx.send(AppEvent::GitDone { desc, entry });
         });
     }
@@ -79,6 +91,7 @@ impl App {
                 status,
                 output,
             };
+            refresh_index_stat_cache(&git);
             let _ = tx.send(AppEvent::GitDone { desc, entry });
         });
     }

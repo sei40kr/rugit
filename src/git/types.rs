@@ -1,5 +1,7 @@
 //! Pure domain types shared by the git layer and the UI.
 
+use std::sync::Arc;
+
 /// Which "diff area" a file or hunk belongs to. Commands dispatch on this.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DiffArea {
@@ -89,8 +91,10 @@ pub struct StatusSnapshot {
     pub state: Option<String>,
     pub untracked: Vec<String>,
     pub unmerged: Vec<String>,
-    pub unstaged: Vec<FileDiff>,
-    pub staged: Vec<FileDiff>,
+    /// `Arc`-shared with the status pane, which needs the same diffs for
+    /// dispatch — a large worktree diff must not be deep-copied per refresh.
+    pub unstaged: Arc<Vec<FileDiff>>,
+    pub staged: Arc<Vec<FileDiff>>,
     pub stashes: Vec<StashInfo>,
     pub recent: Vec<LogEntry>,
 }

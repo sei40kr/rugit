@@ -93,7 +93,7 @@ pub fn build_status(t: &Theme, s: &StatusSnapshot) -> Section {
             SectionValue::Group(group),
             group_heading(t, format!("{title} ({})", files.len())),
         );
-        for fd in files {
+        for fd in files.iter() {
             g.children.push(file_section(t, g.id, area, fd));
         }
         root.children.push(g);
@@ -263,7 +263,7 @@ pub fn build_revision(t: &Theme, header: &str, files: &[FileDiff]) -> Section {
         .lines()
         .map(|l| Rc::new(Line::from(l.to_string())))
         .collect();
-    for fd in files {
+    for fd in files.iter() {
         root.children
             .push(file_section(t, 0, DiffArea::Committed, fd));
     }

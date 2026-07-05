@@ -4,6 +4,7 @@
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
 
 use super::parse;
 use super::types::StatusSnapshot;
@@ -111,17 +112,17 @@ impl GitClient {
             )
         });
         let st = parse::parse_status_v2(&status?.stdout);
-        let unstaged = parse::parse_diff(&unstaged?.stdout);
+        let unstaged = Arc::new(parse::parse_diff(&unstaged?.stdout));
 
         // `--cached` needs HEAD; on an unborn branch it fails, so retry
         // against the empty tree (such repos are tiny — serial is fine).
         let staged = staged?;
-        let staged = if staged.ok() {
+        let staged = Arc::new(if staged.ok() {
             parse::parse_diff(&staged.stdout)
         } else {
             let out = self.read(&["diff", "--no-ext-diff", "--cached", EMPTY_TREE])?;
             parse::parse_diff(&out.stdout)
-        };
+        });
 
         // `log` also fails on an unborn branch: no commits, no head summary.
         // The head summary is the first log row, replacing a separate `log -1`.

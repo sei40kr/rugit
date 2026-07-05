@@ -304,7 +304,7 @@ impl App {
             return Vec::new();
         };
         let mut paths = Vec::new();
-        for fd in &s.staged {
+        for fd in s.staged.iter() {
             paths.push(fd.path.clone());
             if let Some(old) = &fd.old_path {
                 paths.push(old.clone());

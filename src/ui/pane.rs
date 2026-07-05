@@ -1,6 +1,8 @@
 //! A pane = one buffer: a section tree plus cursor, viewport and fold state.
 //! Navigation, scrolling and refresh-survival are shared by all buffer kinds.
 
+use std::sync::Arc;
+
 use crate::command::NavCmd;
 use crate::git::todo::TodoEntry;
 use crate::git::types::{DiffArea, FileDiff};
@@ -28,9 +30,11 @@ pub struct Pane {
     pub cursor: usize,
     /// First visible flat line.
     pub top: usize,
-    /// Diffs backing the sections, looked up by (area, path) at dispatch time.
-    pub unstaged: Vec<FileDiff>,
-    pub staged: Vec<FileDiff>,
+    /// Diffs backing the sections, looked up by (area, path) at dispatch
+    /// time. Unstaged/staged are `Arc`-shared with the snapshot they came
+    /// from; `committed` is owned by the revision pane that loaded it.
+    pub unstaged: Arc<Vec<FileDiff>>,
+    pub staged: Arc<Vec<FileDiff>>,
     pub committed: Vec<FileDiff>,
     /// For a `Log` pane: the revision args that produced it, so `g` can re-run
     /// the same log.
@@ -63,8 +67,8 @@ impl Pane {
             flat,
             cursor: 0,
             top: 0,
-            unstaged: Vec::new(),
-            staged: Vec::new(),
+            unstaged: Arc::default(),
+            staged: Arc::default(),
             committed: Vec::new(),
             log_args: None,
             todo: None,
@@ -92,7 +96,7 @@ impl Pane {
     }
 
     pub fn find_file(&self, area: DiffArea, path: &str) -> Option<&FileDiff> {
-        let list = match area {
+        let list: &[FileDiff] = match area {
             DiffArea::Unstaged => &self.unstaged,
             DiffArea::Staged => &self.staged,
             DiffArea::Committed => &self.committed,

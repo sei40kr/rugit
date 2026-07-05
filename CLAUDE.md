@@ -58,14 +58,22 @@ drive the TUI headlessly, run it in a PTY and pipe keystrokes:
   cursor (section-identity based, not line-number based) across refreshes.
 - Refresh results carry a generation counter; stale snapshots are dropped.
   Don't bypass `App::refresh`.
+- **`App::update` and `App::dispatch` are pure routers**: every match arm is
+  a one-line delegation. If an arm needs a body, extract it into the
+  submodule that owns the concern (`app/keys.rs`, `app/dwim.rs`,
+  `app/workers.rs`, `app/search.rs`, `app/ops/*`). Grouped commands
+  (`Command::Nav`, `Command::Transient`) must not be un-grouped back into
+  per-variant arms.
 
 ## Adding things
 
 - **New command**: add a `Command` variant + `COMMANDS` entry
-  (`command.rs`), handle it in `App::dispatch`, bind it in
-  `keymap::default_keymaps`. Help and which-key pick it up automatically.
-- **New transient menu**: define a `TransientDef` in `ui/transient.rs`, map
-  its `TransientAction`s in `App::invoke_transient`. Actions that need an
+  (`command.rs`), handle it in `App::dispatch` (one-line delegation; pure
+  cursor motions go in `NavCmd` instead and cost no dispatch arm), bind it
+  in `keymap::default_keymaps`. Help and which-key pick it up automatically.
+- **New transient menu**: add a `Menu` variant (`command.rs`), define a
+  `TransientDef` + `menu_def` arm in `ui/transient.rs`, map its
+  `TransientAction`s in `App::invoke_transient`. Actions that need an
   argument open an `InputState` (plain minibuffer or picker) with a new
   `InputPurpose`, handled in `App::on_input_submit`.
 - **New buffer kind**: add a `PaneKind`, a tree builder in `ui/build.rs`,

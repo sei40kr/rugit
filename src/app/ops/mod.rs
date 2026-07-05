@@ -1,8 +1,9 @@
 //! One module per transient menu, mirroring how Magit splits into
 //! magit-commit.el / magit-branch.el / magit-push.el. Adding a menu (merge,
-//! rebase, stash, ...) means: a `TransientDef` in `ui/transient.rs`, a
-//! `Command::TransientX` entry, a new file here, and one routing arm in each
-//! of the two matches below. Nothing else grows.
+//! rebase, stash, ...) means: a `TransientDef` + `menu_def` arm in
+//! `ui/transient.rs`, a `Menu` variant in `command.rs`, a new file here, and
+//! one routing arm in each of the two matches below. `App::dispatch` never
+//! grows.
 
 mod branch;
 mod commit;

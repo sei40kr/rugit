@@ -233,14 +233,24 @@ remapping via the config file, which-key style hints.
 ### Commands are data, not closures
 
 ```rust
-enum Command { Refresh, Stage, Unstage, ToggleSection, TransientCommit, ... }
+enum Command { Refresh, Stage, Nav(NavCmd), Transient(Menu), ... }
+enum NavCmd  { MoveDown, HalfPageUp, NextSection, ... }  // pure cursor motions
+enum Menu    { Commit, Branch, Push, Pull, Fetch, Log }  // transient menus
 ```
 
 A keymap maps `KeyPress → Command` and holds no functions. This buys three
 things at once: (1) remapping by name from TOML, (2) a help UI that can
 enumerate command descriptions, (3) dispatch concentrated in one `match`,
 easy to test. Metadata (name, description) lives in the static `COMMANDS`
-table.
+table, one entry per leaf (`Nav(MoveDown)` is "move-down").
+
+Command families whose handling is uniform are grouped into sub-enums so
+`dispatch` stays a constant-size router: all of `NavCmd` forwards to
+`Pane::navigate` in one arm, all of `Menu` resolves through
+`transient::menu_def` in one arm. `App::update` follows the same rule —
+every event arm is a one-line delegation into the owning submodule
+(`app/workers.rs`, `app/keys.rs`, ...). Adding commands, menus, or events
+must not grow either match beyond one routing arm per *family*.
 
 ### Trie and layering
 

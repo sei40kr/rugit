@@ -4,7 +4,7 @@
 use std::thread;
 
 use crate::git::client::{display_cmd, ProcessEntry};
-use crate::git::types::StatusSnapshot;
+use crate::git::types::{LogEntry, StatusSnapshot};
 use crate::keymap::PaneKind;
 use crate::ui::build;
 use crate::ui::pane::Pane;
@@ -95,6 +95,54 @@ impl App {
             let result = git.read_snapshot().map_err(|e| e.to_string());
             let _ = tx.send(AppEvent::SnapshotReady { gen, result });
         });
+    }
+
+    /// A background git mutation finished: record it and refresh.
+    pub(super) fn on_git_done(&mut self, desc: String, entry: ProcessEntry) {
+        self.busy = None;
+        if entry.status != 0 {
+            let first = entry.output.lines().next().unwrap_or("").to_string();
+            self.message = Some(format!("{desc} failed: {first}"));
+        } else {
+            self.message = Some(format!("{desc} done"));
+        }
+        self.process_log.push(entry);
+        self.refresh_process_log_pane();
+        self.refresh();
+    }
+
+    /// `git show` data arrived: open a revision buffer.
+    pub(super) fn on_revision_ready(&mut self, title: String, header: String, diff: String) {
+        self.busy = None;
+        let files = crate::git::parse::parse_diff(&diff);
+        let root = build::build_revision(&self.theme, &header, &files);
+        let mut pane = Pane::new(PaneKind::Revision, title, root);
+        pane.committed = files;
+        self.panes.push(pane);
+    }
+
+    /// `git log` data arrived: open a log buffer, or refresh the current one.
+    pub(super) fn on_log_ready(
+        &mut self,
+        title: String,
+        args: Vec<String>,
+        entries: Vec<LogEntry>,
+        replace: bool,
+    ) {
+        self.busy = None;
+        let root = build::build_log(&self.theme, &title, &entries);
+        let top_is_log = self.panes.last().map(|p| p.kind) == Some(PaneKind::Log);
+        if replace && top_is_log {
+            if let Some(pane) = self.panes.last_mut() {
+                pane.title = title;
+                pane.log_args = Some(args);
+                pane.replace_tree(root);
+            }
+        } else {
+            let mut pane = Pane::new(PaneKind::Log, title, root);
+            pane.log_args = Some(args);
+            self.panes.push(pane);
+        }
     }
 
     pub(super) fn on_snapshot(&mut self, gen: u64, result: Result<StatusSnapshot, String>) {

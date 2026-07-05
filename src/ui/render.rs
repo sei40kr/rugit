@@ -135,7 +135,10 @@ fn fill_background(line: Line<'static>, bg: ratatui::style::Color, width: u16) -
     let used = line.width();
     let mut spans = line.spans;
     if (width as usize) > used {
-        spans.push(Span::styled(spaces(width as usize - used), Style::new().bg(bg)));
+        spans.push(Span::styled(
+            spaces(width as usize - used),
+            Style::new().bg(bg),
+        ));
     }
     Line::from(spans)
 }
@@ -413,8 +416,8 @@ mod tests {
     fn with_margin_places_block_at_fixed_right_column_with_gap() {
         let content = Line::from("abc".to_string());
         let margin = Line::from("xy".to_string()); // 2 cols
-        // width 30: content col = 30 - (2 + 2 + 1) = 25; margin ends 1 col
-        // short of the edge, so a blank column is kept on the right.
+                                                   // width 30: content col = 30 - (2 + 2 + 1) = 25; margin ends 1 col
+                                                   // short of the edge, so a blank column is kept on the right.
         let out = with_margin(&content, &margin, 30);
         assert_eq!(out.to_string(), "abc                        xy ");
         assert_eq!(out.width(), 30);
@@ -459,10 +462,6 @@ mod tests {
         let out = with_margin(&content, &margin, 15);
         assert_eq!(out.to_string(), "abcdef");
     }
-
-
-
-
 
     #[test]
     fn match_mask_smart_case_and_multiple() {

@@ -18,15 +18,14 @@ pub use search::SearchState;
 use crossbeam_channel::Sender;
 use ratatui::crossterm::event::KeyEvent;
 
-use crate::command::Command;
+use crate::command::{Command, NavCmd};
 use crate::git::client::{GitClient, ProcessEntry};
 use crate::git::types::{LogEntry, StatusSnapshot};
 use crate::keymap::{KeyPress, Keymaps, PaneKind};
 use crate::theme::Theme;
-use crate::ui::build;
 use crate::ui::input::InputState;
 use crate::ui::pane::Pane;
-use crate::ui::transient::{TransientState, BRANCH, COMMIT, FETCH, LOG, PULL, PUSH};
+use crate::ui::transient::{menu_def, TransientState};
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)] // events are few and short-lived
@@ -162,88 +161,47 @@ impl App {
 
     // ---- event handling ----------------------------------------------------
 
+    /// Pure router: every arm is a one-line delegation. Event bodies live in
+    /// the submodule that owns the concern (see the module docs).
     pub fn update(&mut self, event: AppEvent) {
         match event {
             AppEvent::Key(ev) => self.on_key(ev),
             AppEvent::Resize => {}
             AppEvent::SnapshotReady { gen, result } => self.on_snapshot(gen, result),
-            AppEvent::GitDone { desc, entry } => {
-                self.busy = None;
-                if entry.status != 0 {
-                    let first = entry.output.lines().next().unwrap_or("").to_string();
-                    self.message = Some(format!("{desc} failed: {first}"));
-                } else {
-                    self.message = Some(format!("{desc} done"));
-                }
-                self.process_log.push(entry);
-                self.refresh_process_log_pane();
-                self.refresh();
-            }
+            AppEvent::GitDone { desc, entry } => self.on_git_done(desc, entry),
             AppEvent::RevisionReady {
                 title,
                 header,
                 diff,
-            } => {
-                self.busy = None;
-                let files = crate::git::parse::parse_diff(&diff);
-                let root = build::build_revision(&self.theme, &header, &files);
-                let mut pane = Pane::new(PaneKind::Revision, title, root);
-                pane.committed = files;
-                self.panes.push(pane);
-            }
+            } => self.on_revision_ready(title, header, diff),
             AppEvent::LogReady {
                 title,
                 args,
                 entries,
                 replace,
-            } => {
-                self.busy = None;
-                let root = build::build_log(&self.theme, &title, &entries);
-                let top_is_log = self.panes.last().map(|p| p.kind) == Some(PaneKind::Log);
-                if replace && top_is_log {
-                    if let Some(pane) = self.panes.last_mut() {
-                        pane.title = title;
-                        pane.log_args = Some(args);
-                        pane.replace_tree(root);
-                    }
-                } else {
-                    let mut pane = Pane::new(PaneKind::Log, title, root);
-                    pane.log_args = Some(args);
-                    self.panes.push(pane);
-                }
-            }
+            } => self.on_log_ready(title, args, entries, replace),
             AppEvent::RepoChanged => self.refresh(),
         }
     }
 
     // ---- command dispatch --------------------------------------------------
 
+    /// Pure router, like `update`: an arm that grows a body gets extracted
+    /// into a submodule method.
     fn dispatch(&mut self, cmd: Command) {
         let height = 40; // page motions use a nominal height; follow() clamps
         match cmd {
-            Command::Quit => {
-                if self.panes.len() > 1 {
-                    self.panes.pop();
-                } else {
-                    self.should_quit = true;
-                }
-            }
+            Command::Quit => self.quit_or_pop(),
             Command::Refresh => {
                 self.refresh_current();
                 self.message = Some("refreshing".into());
             }
-            Command::MoveDown => self.pane_mut(|p| p.move_cursor(1)),
-            Command::MoveUp => self.pane_mut(|p| p.move_cursor(-1)),
-            Command::HalfPageDown => self.pane_mut(|p| p.move_cursor(height / 2)),
-            Command::HalfPageUp => self.pane_mut(|p| p.move_cursor(-(height / 2))),
-            Command::GotoTop => self.pane_mut(|p| p.goto_top()),
-            Command::GotoBottom => self.pane_mut(|p| p.goto_bottom()),
             // While a search is active, n/p walk matches instead of sections.
-            Command::NextSection if self.search.query.is_some() => self.search_move(1),
-            Command::PrevSection if self.search.query.is_some() => self.search_move(-1),
-            Command::NextSection => self.pane_mut(|p| p.next_section()),
-            Command::PrevSection => self.pane_mut(|p| p.prev_section()),
-            Command::ParentSection => self.pane_mut(|p| p.parent_section()),
+            Command::Nav(NavCmd::NextSection) if self.search.query.is_some() => self.search_move(1),
+            Command::Nav(NavCmd::PrevSection) if self.search.query.is_some() => {
+                self.search_move(-1)
+            }
+            Command::Nav(nav) => self.pane_mut(|p| p.navigate(nav, height)),
             Command::ToggleSection => self.pane_mut(|p| p.toggle_at_cursor()),
             Command::Stage => self.stage_at_point(),
             Command::Unstage => self.unstage_at_point(),
@@ -252,17 +210,20 @@ impl App {
             Command::Discard => self.discard_at_point(),
             Command::Visit => self.visit_at_point(),
             Command::Search => self.start_search(),
-            Command::TransientCommit => self.transient = Some(TransientState::new(&COMMIT)),
-            Command::TransientBranch => self.transient = Some(TransientState::new(&BRANCH)),
-            Command::TransientPush => self.transient = Some(TransientState::new(&PUSH)),
-            Command::TransientPull => self.transient = Some(TransientState::new(&PULL)),
-            Command::TransientFetch => self.transient = Some(TransientState::new(&FETCH)),
-            Command::TransientLog => self.transient = Some(TransientState::new(&LOG)),
+            Command::Transient(menu) => self.transient = Some(TransientState::new(menu_def(menu))),
             Command::Help => {
                 self.show_help = true;
                 self.help_scroll = 0;
             }
             Command::ProcessLog => self.open_process_log(),
+        }
+    }
+
+    fn quit_or_pop(&mut self) {
+        if self.panes.len() > 1 {
+            self.panes.pop();
+        } else {
+            self.should_quit = true;
         }
     }
 

@@ -8,6 +8,7 @@ use ratatui::crossterm::event::KeyCode;
 use ratatui::style::{Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 
+use crate::command::Menu;
 use crate::keymap::KeyPress;
 use crate::theme::Theme;
 
@@ -316,6 +317,19 @@ pub static LOG: TransientDef = TransientDef {
     ],
 };
 
+/// Resolve a `Command::Transient(menu)` to its definition. A new menu adds
+/// one arm here and nothing in `App::dispatch`.
+pub fn menu_def(menu: Menu) -> &'static TransientDef {
+    match menu {
+        Menu::Commit => &COMMIT,
+        Menu::Branch => &BRANCH,
+        Menu::Push => &PUSH,
+        Menu::Pull => &PULL,
+        Menu::Fetch => &FETCH,
+        Menu::Log => &LOG,
+    }
+}
+
 /// A currently-open transient: the definition plus toggled switches and the
 /// multi-char key input buffer (switch keys like "-a" are two keystrokes).
 #[derive(Debug, Clone)]
@@ -467,7 +481,6 @@ mod tests {
     fn key(c: char) -> KeyPress {
         KeyPress::new(KeyCode::Char(c), KeyModifiers::NONE)
     }
-
 
     #[test]
     fn switch_key_is_a_two_key_sequence() {

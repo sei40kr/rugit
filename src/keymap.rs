@@ -296,34 +296,36 @@ impl Keymaps {
 
 /// The built-in bindings. User config is merged on top of these.
 pub fn default_keymaps() -> Keymaps {
+    use crate::command::Menu;
+    use crate::command::NavCmd::*;
     use Command::*;
     let mut global = Keymap::default();
     for (spec, cmd) in [
         ("q", Quit),
         ("g", Refresh),
-        ("j", MoveDown),
-        ("DOWN", MoveDown),
-        ("k", MoveUp),
-        ("UP", MoveUp),
-        ("C-d", HalfPageDown),
-        ("C-u", HalfPageUp),
-        ("PGDN", HalfPageDown),
-        ("PGUP", HalfPageUp),
-        ("HOME", GotoTop),
-        ("END", GotoBottom),
-        ("G", GotoBottom),
-        ("n", NextSection),
-        ("p", PrevSection),
-        ("^", ParentSection),
+        ("j", Nav(MoveDown)),
+        ("DOWN", Nav(MoveDown)),
+        ("k", Nav(MoveUp)),
+        ("UP", Nav(MoveUp)),
+        ("C-d", Nav(HalfPageDown)),
+        ("C-u", Nav(HalfPageUp)),
+        ("PGDN", Nav(HalfPageDown)),
+        ("PGUP", Nav(HalfPageUp)),
+        ("HOME", Nav(GotoTop)),
+        ("END", Nav(GotoBottom)),
+        ("G", Nav(GotoBottom)),
+        ("n", Nav(NextSection)),
+        ("p", Nav(PrevSection)),
+        ("^", Nav(ParentSection)),
         ("TAB", ToggleSection),
         ("RET", Visit),
         ("/", Search),
-        ("c", TransientCommit),
-        ("b", TransientBranch),
-        ("P", TransientPush),
-        ("F", TransientPull),
-        ("f", TransientFetch),
-        ("l", TransientLog),
+        ("c", Transient(Menu::Commit)),
+        ("b", Transient(Menu::Branch)),
+        ("P", Transient(Menu::Push)),
+        ("F", Transient(Menu::Pull)),
+        ("f", Transient(Menu::Fetch)),
+        ("l", Transient(Menu::Log)),
         ("?", Help),
         ("$", ProcessLog),
     ] {
@@ -349,6 +351,7 @@ pub fn default_keymaps() -> Keymaps {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::command::Menu;
 
     #[test]
     fn parse_and_format_roundtrip() {
@@ -361,12 +364,15 @@ mod tests {
     #[test]
     fn sequence_lookup() {
         let mut km = Keymap::default();
-        km.bind("P p", Command::TransientPush);
+        km.bind("P p", Command::Transient(Menu::Push));
         km.bind("g", Command::Refresh);
         let p = parse_keys("P").unwrap();
         assert_eq!(km.lookup(&p), Lookup::Pending);
         let pp = parse_keys("P p").unwrap();
-        assert_eq!(km.lookup(&pp), Lookup::Command(Command::TransientPush));
+        assert_eq!(
+            km.lookup(&pp),
+            Lookup::Command(Command::Transient(Menu::Push))
+        );
         let px = parse_keys("P x").unwrap();
         assert_eq!(km.lookup(&px), Lookup::Unbound);
         assert_eq!(
@@ -379,10 +385,10 @@ mod tests {
     fn rebinding_a_prefix_replaces_it() {
         let mut km = Keymap::default();
         km.bind("P", Command::Refresh);
-        km.bind("P p", Command::TransientPush);
+        km.bind("P p", Command::Transient(Menu::Push));
         assert_eq!(
             km.lookup(&parse_keys("P p").unwrap()),
-            Lookup::Command(Command::TransientPush)
+            Lookup::Command(Command::Transient(Menu::Push))
         );
     }
 

@@ -1,6 +1,7 @@
 //! A pane = one buffer: a section tree plus cursor, viewport and fold state.
 //! Navigation, scrolling and refresh-survival are shared by all buffer kinds.
 
+use crate::command::NavCmd;
 use crate::git::types::{DiffArea, FileDiff};
 use crate::keymap::PaneKind;
 use crate::ui::section::{flatten, FlatLine, Section, SectionId, SectionValue};
@@ -82,6 +83,22 @@ impl Pane {
     }
 
     // ---- navigation ------------------------------------------------------
+
+    /// Route a grouped navigation command. `height` sizes the page motions.
+    pub fn navigate(&mut self, nav: NavCmd, height: usize) {
+        let half = (height / 2) as isize;
+        match nav {
+            NavCmd::MoveDown => self.move_cursor(1),
+            NavCmd::MoveUp => self.move_cursor(-1),
+            NavCmd::HalfPageDown => self.move_cursor(half),
+            NavCmd::HalfPageUp => self.move_cursor(-half),
+            NavCmd::GotoTop => self.goto_top(),
+            NavCmd::GotoBottom => self.goto_bottom(),
+            NavCmd::NextSection => self.next_section(),
+            NavCmd::PrevSection => self.prev_section(),
+            NavCmd::ParentSection => self.parent_section(),
+        }
+    }
 
     pub fn move_cursor(&mut self, delta: isize) {
         let max = self.flat.len().saturating_sub(1);

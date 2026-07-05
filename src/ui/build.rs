@@ -364,11 +364,17 @@ fn ref_spans(t: &Theme, refs: &str) -> Vec<Span<'static>> {
         }
         if let Some(branch) = raw.strip_prefix("HEAD -> ") {
             // Current branch — the "HEAD ->" pointer itself is elided.
-            out.push(Span::styled(branch.to_string(), Style::new().fg(t.branch).bold()));
+            out.push(Span::styled(
+                branch.to_string(),
+                Style::new().fg(t.branch).bold(),
+            ));
         } else if let Some(tag) = raw.strip_prefix("tag: ") {
             out.push(Span::styled(tag.to_string(), Style::new().fg(t.tag).bold()));
         } else if raw.contains('/') {
-            out.push(Span::styled(raw.to_string(), Style::new().fg(t.branch_remote)));
+            out.push(Span::styled(
+                raw.to_string(),
+                Style::new().fg(t.branch_remote),
+            ));
         } else {
             out.push(Span::styled(raw.to_string(), Style::new().fg(t.branch)));
         }
@@ -474,7 +480,11 @@ mod tests {
     #[test]
     fn log_header_names_the_range_magit_style() {
         let t = Theme::default();
-        let root = build_log(&t, "Commits in HEAD", &[entry("a", "", "s1"), entry("b", "", "s2")]);
+        let root = build_log(
+            &t,
+            "Commits in HEAD",
+            &[entry("a", "", "s1"), entry("b", "", "s2")],
+        );
         // First body line is the header verbatim; commits are children.
         assert_eq!(root.body[0].to_string(), "Commits in HEAD");
         assert_eq!(root.children.len(), 2);

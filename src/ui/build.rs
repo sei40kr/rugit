@@ -443,7 +443,9 @@ pub fn build_rebase_todo(t: &Theme, title: &str, entries: &[TodoEntry]) -> Secti
 }
 
 /// The `$` buffer: every git command run by the app, newest last.
-pub fn build_process_log(t: &Theme, entries: &[ProcessEntry]) -> Section {
+/// `first_index` numbers the section keys when old entries have been
+/// trimmed, so surviving entries keep their identity (fold state, cursor).
+pub fn build_process_log(t: &Theme, entries: &[ProcessEntry], first_index: usize) -> Section {
     let mut root = Section::root();
     if entries.is_empty() {
         root.push_body(Line::from(Span::styled(
@@ -460,7 +462,7 @@ pub fn build_process_log(t: &Theme, entries: &[ProcessEntry]) -> Section {
         };
         let mut sec = Section::new(
             0,
-            &format!("proc:{i}"),
+            &format!("proc:{}", first_index + i),
             SectionValue::Text,
             Line::from(vec![
                 Span::styled(format!("[{}] ", e.status), status_style),

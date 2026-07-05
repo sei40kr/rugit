@@ -112,6 +112,10 @@ pub struct App {
     pub message: Option<String>,
     pub busy: Option<String>,
     pub process_log: Vec<ProcessEntry>,
+    /// How many old entries have been trimmed off `process_log`; keeps the
+    /// `$` buffer's section identities stable so fold state and the cursor
+    /// don't jump to a different entry after a trim.
+    pub process_log_dropped: usize,
     pub snapshot: Option<StatusSnapshot>,
     pub search: SearchState,
     pub should_quit: bool,
@@ -156,6 +160,7 @@ impl App {
             message: None,
             busy: None,
             process_log: Vec::new(),
+            process_log_dropped: 0,
             snapshot: None,
             search: SearchState::default(),
             should_quit: false,

@@ -26,6 +26,9 @@ fn refresh_index_stat_cache(git: &crate::git::client::GitClient) {
 const LOG_FORMAT: &str = "--format=%h%x1f%D%x1f%s%x1f%an%x1f%ar";
 /// How many commits the log buffer fetches (matches Magit's default).
 const LOG_LIMIT: &str = "256";
+/// Entries kept in the `$` process log. Each keeps its command's full
+/// output, so an unbounded log would grow for the whole session.
+const PROCESS_LOG_MAX: usize = 200;
 
 impl App {
     /// Run a git mutation on a worker thread; completion triggers a refresh.
@@ -168,7 +171,7 @@ impl App {
         } else {
             self.message = Some(format!("{desc} done"));
         }
-        self.process_log.push(entry);
+        self.push_process_entry(entry);
         self.refresh_process_log_pane();
         self.refresh();
     }
@@ -235,7 +238,7 @@ impl App {
 
     /// The editor ran in the foreground; record the result and refresh.
     pub fn on_editor_done(&mut self, desc: String, args: Vec<String>, status: i32) {
-        self.process_log.push(ProcessEntry {
+        self.push_process_entry(ProcessEntry {
             cmd: display_cmd(&args),
             status,
             output: String::new(), // stdio was inherited by the editor
@@ -253,7 +256,8 @@ impl App {
         if self.panes.last().map(|p| p.kind) == Some(PaneKind::ProcessLog) {
             return;
         }
-        let root = build::build_process_log(&self.theme, &self.process_log);
+        let root =
+            build::build_process_log(&self.theme, &self.process_log, self.process_log_dropped);
         self.panes.push(Pane::new(
             PaneKind::ProcessLog,
             "git process log".into(),
@@ -267,7 +271,20 @@ impl App {
             .iter_mut()
             .find(|p| p.kind == PaneKind::ProcessLog)
         {
-            pane.replace_tree(build::build_process_log(&self.theme, &self.process_log));
+            pane.replace_tree(build::build_process_log(
+                &self.theme,
+                &self.process_log,
+                self.process_log_dropped,
+            ));
+        }
+    }
+
+    fn push_process_entry(&mut self, entry: ProcessEntry) {
+        self.process_log.push(entry);
+        if self.process_log.len() > PROCESS_LOG_MAX {
+            let excess = self.process_log.len() - PROCESS_LOG_MAX;
+            self.process_log.drain(..excess);
+            self.process_log_dropped += excess;
         }
     }
 }

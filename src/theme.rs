@@ -73,6 +73,7 @@ theme! {
     picker_marker:   Color::Yellow   => "picker-marker",      // "▸" on the selection
     picker_selected_bg: Color::DarkGray => "picker-selected-bg",
     picker_selected_fg: Color::Reset    => "picker-selected-fg",
+    picker_count:    Color::DarkGray => "picker-count",       // "12/45" hint
     menu_title:      Color::Magenta  => "menu-title",
     command:         Color::Cyan     => "command",           // command names in help
     help_border:     Color::Cyan     => "help-border",

@@ -217,8 +217,11 @@ impl InputState {
     /// input line with a block cursor.
     pub fn render_lines(&self, t: &Theme, max_candidates: usize) -> Vec<Line<'static>> {
         let mut out = Vec::new();
+        // Filtered / total candidate counts, appended to the input line.
+        let mut counts = None;
         if self.is_picker() {
             let matches = self.matches();
+            counts = Some((matches.len(), self.candidates.len()));
             let selected = self.selected.min(matches.len().saturating_sub(1));
             // Keep the selection in view within the candidate window.
             let start = selected.saturating_sub(max_candidates.saturating_sub(1));
@@ -252,12 +255,19 @@ impl InputState {
             .map(|c| c.to_string())
             .unwrap_or_else(|| " ".to_string());
         let after: String = chars[(self.cursor + 1).min(chars.len())..].iter().collect();
-        out.push(Line::from(vec![
+        let mut spans = vec![
             Span::styled("> ".to_string(), Style::new().fg(t.input_prompt).bold()),
             Span::raw(before),
             Span::styled(at, Style::new().add_modifier(Modifier::REVERSED)),
             Span::raw(after),
-        ]));
+        ];
+        if let Some((shown, total)) = counts {
+            spans.push(Span::styled(
+                format!("  {shown}/{total}"),
+                Style::new().fg(t.picker_count),
+            ));
+        }
+        out.push(Line::from(spans));
         out
     }
 }
@@ -445,6 +455,30 @@ mod tests {
         st.on_key(&ctrl('u'));
         assert_eq!(st.text, "");
         assert_eq!(st.filtered().len(), 2);
+    }
+
+    #[test]
+    fn picker_input_line_shows_filtered_and_total_counts() {
+        let mut st = InputState::picker(
+            "Checkout",
+            InputPurpose::CheckoutRev,
+            vec![
+                "main".into(),
+                "develop".into(),
+                "feature/a".into(),
+                "feature/b".into(),
+            ],
+        );
+        type_str(&mut st, "feat");
+        let lines = st.render_lines(&Theme::default(), 10);
+        let input_line: String = lines
+            .last()
+            .unwrap()
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(input_line.ends_with("2/4"), "got {input_line:?}");
     }
 
     #[test]

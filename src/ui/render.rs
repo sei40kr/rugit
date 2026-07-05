@@ -83,7 +83,7 @@ fn draw_pane(f: &mut Frame, app: &mut App, area: Rect) {
                 content = fill_background(content, bg, area.width);
             }
             let mut line = if top + i == cursor {
-                highlight(&content, cursor_bg)
+                highlight(&content, cursor_bg, area.width)
             } else {
                 content
             };
@@ -243,19 +243,16 @@ fn segment(s: String, base: Style, matched: bool, hl: Style) -> Span<'static> {
     Span::styled(s, if matched { base.patch(hl) } else { base })
 }
 
-/// Apply a background highlight while keeping per-span foregrounds.
-fn highlight(line: &Line<'static>, hl: Style) -> Line<'static> {
+/// Apply a background highlight, extended to `width` columns, while keeping
+/// per-span foregrounds.
+fn highlight(line: &Line<'static>, hl: Style, width: u16) -> Line<'static> {
     let mut spans: Vec<Span> = line
         .spans
         .iter()
         .map(|s| Span::styled(s.content.clone(), s.style.patch(hl)))
         .collect();
-    if spans.is_empty() {
-        spans.push(Span::styled(" ", hl));
-    } else {
-        // Extend the highlight to the full width via a padded tail span.
-        spans.push(Span::styled(" ".repeat(200), hl));
-    }
+    let pad = (width as usize).saturating_sub(line.width()).max(1);
+    spans.push(Span::styled(spaces(pad), hl));
     Line::from(spans)
 }
 

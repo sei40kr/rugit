@@ -1,6 +1,7 @@
 //! The section tree — Magit's core abstraction. Every buffer is a tree of
 //! sections; commands act on the section at point (DWIM dispatch).
 
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 use ratatui::style::Color;
@@ -124,7 +125,7 @@ impl Section {
 
     /// Copy collapse state from a previous tree by section identity.
     pub fn inherit_collapse(&mut self, old: &Section) {
-        let mut states = Vec::new();
+        let mut states = HashMap::new();
         collect_collapse(old, &mut states);
         apply_collapse(self, &states);
     }
@@ -137,16 +138,16 @@ pub fn section_id(parent: SectionId, key: &str) -> SectionId {
     h.finish()
 }
 
-fn collect_collapse(s: &Section, out: &mut Vec<(SectionId, bool)>) {
-    out.push((s.id, s.collapsed));
+fn collect_collapse(s: &Section, out: &mut HashMap<SectionId, bool>) {
+    out.insert(s.id, s.collapsed);
     for c in &s.children {
         collect_collapse(c, out);
     }
 }
 
-fn apply_collapse(s: &mut Section, states: &[(SectionId, bool)]) {
-    if let Some((_, collapsed)) = states.iter().find(|(id, _)| *id == s.id) {
-        s.collapsed = *collapsed;
+fn apply_collapse(s: &mut Section, states: &HashMap<SectionId, bool>) {
+    if let Some(&collapsed) = states.get(&s.id) {
+        s.collapsed = collapsed;
     }
     for c in &mut s.children {
         apply_collapse(c, states);

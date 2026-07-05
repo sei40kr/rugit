@@ -82,9 +82,13 @@ enum AppEvent {
   compromise so stdin reading can be reliably paused during $EDITOR handoff
   (a blocking `read()` cannot be interrupted from outside). It does not
   affect UI latency or redraw frequency.
-- **Generation counter**: every refresh increments `gen` and tags its
-  snapshot with it; stale results that arrive late are dropped (guards
-  against races from rapid keypresses and the auto-refresh).
+- **Single-flight refresh + generation counter**: at most one snapshot
+  read runs at a time — refreshes requested while one is in flight only
+  set a dirty flag, and one follow-up read runs on completion. This keeps
+  a burst of watcher events (a fetch updating many refs, `git gc`) from
+  piling up concurrent whole-worktree scans on a large repo. Every read
+  still carries a `gen` tag and stale results are dropped, as a safety
+  net.
 - **Mutation completed → auto refresh**: receiving `GitDone` always
   re-reads the snapshot.
 - **$EDITOR handoff**: `git commit` needs the terminal. `update()` only

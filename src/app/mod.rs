@@ -117,6 +117,11 @@ pub struct App {
     pub should_quit: bool,
     editor_request: Option<EditorRequest>,
     refresh_gen: u64,
+    /// A snapshot read is in flight. Refreshes requested meanwhile only set
+    /// `refresh_dirty` — on a large repo the `.git` watcher can fire faster
+    /// than a scan completes, and concurrent scans compound the slowdown.
+    refresh_inflight: bool,
+    refresh_dirty: bool,
 }
 
 impl App {
@@ -156,6 +161,8 @@ impl App {
             should_quit: false,
             editor_request: None,
             refresh_gen: 0,
+            refresh_inflight: false,
+            refresh_dirty: false,
         }
     }
 

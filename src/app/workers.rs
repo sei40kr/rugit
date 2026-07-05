@@ -125,7 +125,17 @@ impl App {
     }
 
     /// Kick off a background status snapshot read.
+    ///
+    /// Single-flight: while a read is in flight, further requests only mark
+    /// the state dirty and one follow-up read runs when it completes.
+    /// Without this, watcher events arriving faster than a large repo can
+    /// be scanned pile up concurrent scans that slow each other down.
     pub fn refresh(&mut self) {
+        if self.refresh_inflight {
+            self.refresh_dirty = true;
+            return;
+        }
+        self.refresh_inflight = true;
         self.refresh_gen += 1;
         let gen = self.refresh_gen;
         let git = self.git.clone();
@@ -185,20 +195,28 @@ impl App {
     }
 
     pub(super) fn on_snapshot(&mut self, gen: u64, result: Result<StatusSnapshot, String>) {
-        if gen != self.refresh_gen {
-            return; // stale — a newer refresh is already in flight
-        }
-        match result {
-            Ok(snapshot) => {
-                let root = build::build_status(&self.theme, &snapshot);
-                if let Some(pane) = self.panes.iter_mut().find(|p| p.kind == PaneKind::Status) {
-                    pane.replace_tree(root);
-                    pane.unstaged = snapshot.unstaged.clone();
-                    pane.staged = snapshot.staged.clone();
+        self.refresh_inflight = false;
+        // The gen guard stays as a safety net, though single-flight means a
+        // stale snapshot can no longer arrive.
+        if gen == self.refresh_gen {
+            match result {
+                Ok(snapshot) => {
+                    let root = build::build_status(&self.theme, &snapshot);
+                    if let Some(pane) = self.panes.iter_mut().find(|p| p.kind == PaneKind::Status)
+                    {
+                        pane.replace_tree(root);
+                        pane.unstaged = snapshot.unstaged.clone();
+                        pane.staged = snapshot.staged.clone();
+                    }
+                    self.snapshot = Some(snapshot);
                 }
-                self.snapshot = Some(snapshot);
+                Err(e) => self.message = Some(format!("refresh failed: {e}")),
             }
-            Err(e) => self.message = Some(format!("refresh failed: {e}")),
+        }
+        // A refresh was requested while this one ran; run the follow-up now.
+        if self.refresh_dirty {
+            self.refresh_dirty = false;
+            self.refresh();
         }
     }
 

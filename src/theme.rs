@@ -68,6 +68,7 @@ theme! {
     success:         Color::Green    => "success",
     // Menus (transient / which-key / help)
     key:             Color::Yellow   => "key",
+    picker_match:    Color::Cyan     => "picker-match",       // fuzzy-matched chars
     menu_title:      Color::Magenta  => "menu-title",
     command:         Color::Cyan     => "command",           // command names in help
     help_border:     Color::Cyan     => "help-border",

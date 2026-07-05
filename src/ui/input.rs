@@ -218,20 +218,23 @@ impl InputState {
     pub fn render_lines(&self, t: &Theme, max_candidates: usize) -> Vec<Line<'static>> {
         let mut out = Vec::new();
         if self.is_picker() {
-            let filtered = self.filtered();
-            let selected = self.selected.min(filtered.len().saturating_sub(1));
+            let matches = self.matches();
+            let selected = self.selected.min(matches.len().saturating_sub(1));
             // Keep the selection in view within the candidate window.
             let start = selected.saturating_sub(max_candidates.saturating_sub(1));
-            for (i, cand) in filtered.iter().enumerate().skip(start).take(max_candidates) {
-                let style = if i == selected {
+            for (i, (cand, indices)) in matches.iter().enumerate().skip(start).take(max_candidates)
+            {
+                let base = if i == selected {
                     Style::new().bg(t.cursor_bg).add_modifier(Modifier::BOLD)
                 } else {
                     Style::new()
                 };
                 let marker = if i == selected { "▸ " } else { "  " };
-                out.push(Line::from(Span::styled(format!("{marker}{cand}"), style)));
+                let mut spans = vec![Span::styled(marker.to_string(), base)];
+                spans.extend(highlight_spans(cand, indices, base, t.picker_match));
+                out.push(Line::from(spans));
             }
-            if filtered.is_empty() {
+            if matches.is_empty() {
                 out.push(Line::from(Span::styled(
                     "  (no match — RET uses the typed text)".to_string(),
                     Style::new().dim(),
@@ -254,6 +257,39 @@ impl InputState {
         ]));
         out
     }
+}
+
+/// Split `text` into spans, styling the chars at `indices` (ascending char
+/// positions) with `match_fg` layered over `base`. Consecutive chars with
+/// the same styling are grouped into one span.
+fn highlight_spans(
+    text: &str,
+    indices: &[usize],
+    base: Style,
+    match_fg: ratatui::style::Color,
+) -> Vec<Span<'static>> {
+    let matched_style = base.fg(match_fg).add_modifier(Modifier::BOLD);
+    let mut spans = Vec::new();
+    let mut buf = String::new();
+    let mut buf_matched = false;
+    let mut next = indices.iter().peekable();
+    for (i, c) in text.chars().enumerate() {
+        let matched = next.peek() == Some(&&i);
+        if matched {
+            next.next();
+        }
+        if matched != buf_matched && !buf.is_empty() {
+            let style = if buf_matched { matched_style } else { base };
+            spans.push(Span::styled(std::mem::take(&mut buf), style));
+        }
+        buf_matched = matched;
+        buf.push(c);
+    }
+    if !buf.is_empty() {
+        let style = if buf_matched { matched_style } else { base };
+        spans.push(Span::styled(buf, style));
+    }
+    spans
 }
 
 fn byte_index(s: &str, char_idx: usize) -> usize {
@@ -370,6 +406,17 @@ mod tests {
         };
         let matches = st.matches();
         assert_eq!(matches, vec![("日本語", vec![1, 2])]); // char indices, multibyte-safe
+    }
+
+    #[test]
+    fn highlight_spans_groups_matched_runs() {
+        let t = Theme::default();
+        let spans = highlight_spans("feature/a", &[0, 1, 8], Style::new(), t.picker_match);
+        let texts: Vec<&str> = spans.iter().map(|s| s.content.as_ref()).collect();
+        assert_eq!(texts, vec!["fe", "ature/", "a"]);
+        assert_eq!(spans[0].style.fg, Some(t.picker_match));
+        assert_eq!(spans[1].style.fg, None);
+        assert_eq!(spans[2].style.fg, Some(t.picker_match));
     }
 
     #[test]

@@ -17,6 +17,11 @@ pub enum InputPurpose {
     CheckoutRev,
     CreateCheckoutBranch,
     CreateBranch,
+    /// A branch/revision to log (from the log menu's "other").
+    LogRev,
+    /// A value for a transient value-argument (e.g. `--author=`); the flag is
+    /// carried so the submit handler knows which argument to set.
+    TransientArg(&'static str),
     /// Incremental buffer search: the app reacts to every keystroke, not
     /// just the final submit.
     Search,
@@ -40,6 +45,10 @@ pub struct InputState {
     pub candidates: Vec<String>,
     /// Selection index into `filtered()`.
     pub selected: usize,
+    /// Opaque values handed back to the submit handler alongside the entered
+    /// text — context for the pending operation that outlives the transient
+    /// that opened it (e.g. log flags awaiting the "log other" rev).
+    pub carry: Vec<String>,
 }
 
 impl InputState {
@@ -51,6 +60,7 @@ impl InputState {
             cursor: 0,
             candidates: Vec::new(),
             selected: 0,
+            carry: Vec::new(),
         }
     }
 
@@ -63,6 +73,12 @@ impl InputState {
             candidates,
             ..Self::plain(prompt, purpose)
         }
+    }
+
+    /// Attach context to hand back to the submit handler with the entered text.
+    pub fn with_carry(mut self, carry: Vec<String>) -> Self {
+        self.carry = carry;
+        self
     }
 
     pub fn is_picker(&self) -> bool {

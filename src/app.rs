@@ -9,7 +9,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use crate::command::Command;
 use crate::git::client::{display_cmd, GitClient, ProcessEntry};
 use crate::git::patch::{self, LineOp};
-use crate::git::types::{DiffArea, StatusSnapshot};
+use crate::git::types::{DiffArea, LogEntry, StatusSnapshot};
 use crate::keymap::{normalize, KeyPress, Keymaps, Lookup, PaneKind};
 use crate::theme::Theme;
 use crate::ui::build;
@@ -17,8 +17,13 @@ use crate::ui::input::{InputPurpose, InputResult, InputState};
 use crate::ui::pane::Pane;
 use crate::ui::section::{Group, SectionValue};
 use crate::ui::transient::{
-    TransientAction, TransientResult, TransientState, BRANCH, COMMIT, FETCH, PULL, PUSH,
+    TransientAction, TransientResult, TransientState, BRANCH, COMMIT, FETCH, LOG, PULL, PUSH,
 };
+
+/// Pretty-format for log rows, parsed by `parse::parse_log_entries`.
+const LOG_FORMAT: &str = "--format=%h%x1f%D%x1f%s%x1f%an%x1f%ar";
+/// How many commits the log buffer fetches (matches Magit's default).
+const LOG_LIMIT: &str = "256";
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)] // events are few and short-lived
@@ -40,6 +45,14 @@ pub enum AppEvent {
         title: String,
         header: String,
         diff: String,
+    },
+    /// `git log` data for a log buffer arrived. `replace` re-uses the current
+    /// log pane (a refresh) instead of pushing a new one.
+    LogReady {
+        title: String,
+        args: Vec<String>,
+        entries: Vec<LogEntry>,
+        replace: bool,
     },
     /// The fs watcher saw `.git` change.
     RepoChanged,
@@ -180,6 +193,27 @@ impl App {
                 pane.committed = files;
                 self.panes.push(pane);
             }
+            AppEvent::LogReady {
+                title,
+                args,
+                entries,
+                replace,
+            } => {
+                self.busy = None;
+                let root = build::build_log(&self.theme, &title, &entries);
+                let top_is_log = self.panes.last().map(|p| p.kind) == Some(PaneKind::Log);
+                if replace && top_is_log {
+                    if let Some(pane) = self.panes.last_mut() {
+                        pane.title = title;
+                        pane.log_args = Some(args);
+                        pane.replace_tree(root);
+                    }
+                } else {
+                    let mut pane = Pane::new(PaneKind::Log, title, root);
+                    pane.log_args = Some(args);
+                    self.panes.push(pane);
+                }
+            }
             AppEvent::RepoChanged => self.refresh(),
         }
     }
@@ -215,8 +249,9 @@ impl App {
                     self.message = Some("aborted".into());
                 }
                 InputResult::Submit(value) => {
+                    let carry = std::mem::take(&mut input.carry);
                     self.input = None;
-                    self.on_input_submit(purpose, value);
+                    self.on_input_submit(purpose, value, carry);
                 }
             }
             return;
@@ -250,6 +285,11 @@ impl App {
                 TransientResult::Cancel => self.transient = None,
                 TransientResult::Unbound => {
                     self.message = Some("key not bound in this menu".into());
+                }
+                TransientResult::Prompt { flag, desc } => {
+                    // Prompt for the value over the still-open transient; the
+                    // submit handler writes it back into `transient.values`.
+                    self.input = Some(InputState::plain(desc, InputPurpose::TransientArg(flag)));
                 }
                 TransientResult::Invoke(action, args) => {
                     self.transient = None;
@@ -342,7 +382,7 @@ impl App {
                 }
             }
             Command::Refresh => {
-                self.refresh();
+                self.refresh_current();
                 self.message = Some("refreshing".into());
             }
             Command::MoveDown => self.pane_mut(|p| p.move_cursor(1)),
@@ -370,6 +410,7 @@ impl App {
             Command::TransientPush => self.transient = Some(TransientState::new(&PUSH)),
             Command::TransientPull => self.transient = Some(TransientState::new(&PULL)),
             Command::TransientFetch => self.transient = Some(TransientState::new(&FETCH)),
+            Command::TransientLog => self.transient = Some(TransientState::new(&LOG)),
             Command::Help => {
                 self.show_help = true;
                 self.help_scroll = 0;
@@ -734,6 +775,28 @@ impl App {
                     InputPurpose::CreateBranch,
                 ));
             }
+            TransientAction::LogCurrent => {
+                // Name the current branch in the header (magit shows "Commits in
+                // main"), falling back to HEAD when detached / unborn.
+                let name = self
+                    .snapshot
+                    .as_ref()
+                    .and_then(|s| s.branch.head.clone())
+                    .unwrap_or_else(|| "HEAD".to_string());
+                args.push("HEAD".to_string());
+                self.load_log(format!("Commits in {name}"), args, false)
+            }
+            TransientAction::LogAll => {
+                args.push("--all".to_string());
+                self.load_log("Commits in all references".into(), args, false)
+            }
+            TransientAction::LogOther => {
+                // Carry the log options through the rev picker to the submit.
+                self.input = Some(
+                    InputState::picker("Log", InputPurpose::LogRev, self.list_branches())
+                        .with_carry(args),
+                );
+            }
         }
     }
 
@@ -805,7 +868,7 @@ impl App {
 
     // ---- minibuffer input ------------------------------------------------------
 
-    fn on_input_submit(&mut self, purpose: InputPurpose, value: String) {
+    fn on_input_submit(&mut self, purpose: InputPurpose, value: String, carry: Vec<String>) {
         if purpose == InputPurpose::Search {
             if value.is_empty() {
                 self.search = None;
@@ -842,6 +905,17 @@ impl App {
                     svec(&["branch", &value]),
                     None,
                 );
+            }
+            InputPurpose::LogRev => {
+                // `carry` holds the log options collected in the transient.
+                let mut extra = carry;
+                extra.push(value.clone());
+                self.load_log(format!("Commits in {value}"), extra, false);
+            }
+            InputPurpose::TransientArg(flag) => {
+                if let Some(t) = self.transient.as_mut() {
+                    t.set_value(flag, value);
+                }
             }
             InputPurpose::Search => unreachable!("handled by the early return above"),
         }
@@ -914,6 +988,47 @@ impl App {
                 },
             };
             let _ = tx.send(AppEvent::GitDone { desc, entry });
+        });
+    }
+
+    /// Refresh whatever the active buffer shows: re-run the log for a log
+    /// pane, otherwise re-read the status snapshot.
+    fn refresh_current(&mut self) {
+        if let Some(pane) = self.panes.last() {
+            if pane.kind == PaneKind::Log {
+                if let Some(args) = pane.log_args.clone() {
+                    let title = pane.title.clone();
+                    self.load_log(title, args, true);
+                    return;
+                }
+            }
+        }
+        self.refresh();
+    }
+
+    /// Read a log on a worker thread. `rev_args` are everything after the
+    /// format+limit: the transient options (e.g. `--no-merges`,
+    /// `--author=ada`) followed by the revision selector (`HEAD`, `--all`, a
+    /// branch). Stored on the pane so `g` reproduces the same query. `replace`
+    /// refreshes the current log pane instead of opening a new one.
+    fn load_log(&mut self, title: String, rev_args: Vec<String>, replace: bool) {
+        self.busy = Some(title.clone());
+        let git = self.git.clone();
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let mut args = svec(&["log", LOG_FORMAT, "-n", LOG_LIMIT]);
+            args.extend(rev_args.iter().cloned());
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            let entries = git
+                .run(&arg_refs)
+                .map(|o| crate::git::parse::parse_log_entries(&o.stdout))
+                .unwrap_or_default();
+            let _ = tx.send(AppEvent::LogReady {
+                title,
+                args: rev_args,
+                entries,
+                replace,
+            });
         });
     }
 

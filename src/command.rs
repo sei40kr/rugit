@@ -27,6 +27,7 @@ pub enum Command {
     TransientPush,
     TransientPull,
     TransientFetch,
+    TransientLog,
     Help,
     ProcessLog,
 }
@@ -98,6 +99,7 @@ pub const COMMANDS: &[CommandInfo] = &[
     ci(Command::TransientPush, "push", "Open the push menu"),
     ci(Command::TransientPull, "pull", "Open the pull menu"),
     ci(Command::TransientFetch, "fetch", "Open the fetch menu"),
+    ci(Command::TransientLog, "log", "Open the log menu"),
     ci(Command::Help, "help", "Show key bindings"),
     ci(
         Command::ProcessLog,

@@ -53,6 +53,20 @@ pub struct CommitInfo {
     pub subject: String,
 }
 
+/// One row of the log buffer, richer than `CommitInfo` (which only feeds the
+/// status "Recent commits" list).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogEntry {
+    /// Abbreviated hash.
+    pub hash: String,
+    /// Ref decorations (`%D`): branch/tag/HEAD names, empty when undecorated.
+    pub refs: String,
+    pub subject: String,
+    pub author: String,
+    /// Relative author date (`%ar`), e.g. "3 days ago".
+    pub date: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StashInfo {
     pub index: usize,

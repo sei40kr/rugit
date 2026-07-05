@@ -3,6 +3,7 @@
 
 use std::hash::{Hash, Hasher};
 
+use ratatui::style::Color;
 use ratatui::text::Line;
 
 use crate::git::types::DiffArea;
@@ -53,6 +54,17 @@ pub struct Section {
     pub body: Vec<Line<'static>>,
     pub children: Vec<Section>,
     pub collapsed: bool,
+    /// When set on the root, its children render as one tight list: no
+    /// blank-line separators between them, and no blank line between the root
+    /// body (e.g. the log header) and the first child. Used by the log.
+    pub compact: bool,
+    /// When set, this section's body lines render as a full-width bar in this
+    /// background color (the log header). The color still comes from `Theme`.
+    pub body_fill: Option<Color>,
+    /// Optional right-aligned trailer for this section's heading line (the log
+    /// margin: author + date). Placed flush to the buffer's right edge at
+    /// render time, since layout needs the viewport width.
+    pub margin: Option<Line<'static>>,
 }
 
 impl Section {
@@ -64,6 +76,9 @@ impl Section {
             body: Vec::new(),
             children: Vec::new(),
             collapsed: false,
+            compact: false,
+            body_fill: None,
+            margin: None,
         }
     }
 
@@ -80,6 +95,9 @@ impl Section {
             body: Vec::new(),
             children: Vec::new(),
             collapsed: false,
+            compact: false,
+            body_fill: None,
+            margin: None,
         }
     }
 
@@ -146,6 +164,12 @@ pub struct FlatLine {
     /// Index into the owning section's `body` (None for headings/spacers).
     pub body_idx: Option<usize>,
     pub line: Line<'static>,
+    /// Right-aligned trailer, rendered flush to the viewport's right edge
+    /// (only ever set on a heading line — the log margin).
+    pub margin: Option<Line<'static>>,
+    /// When set, extend this line's background across the full pane width in
+    /// this color (the log header bar).
+    pub fill_bg: Option<Color>,
 }
 
 pub fn flatten(root: &Section) -> Vec<FlatLine> {
@@ -158,14 +182,16 @@ pub fn flatten(root: &Section) -> Vec<FlatLine> {
             is_heading: false,
             body_idx: Some(i),
             line: l.clone(),
+            margin: None,
+            fill_bg: root.body_fill,
         });
     }
-    if !root.body.is_empty() && !root.children.is_empty() {
+    if !root.body.is_empty() && !root.children.is_empty() && !root.compact {
         out.push(spacer(Vec::new(), root.id));
     }
     for (i, child) in root.children.iter().enumerate() {
         flatten_into(child, vec![i], &mut out);
-        if i + 1 < root.children.len() {
+        if i + 1 < root.children.len() && !root.compact {
             out.push(spacer(vec![i], child.id));
         }
     }
@@ -179,6 +205,8 @@ fn flatten_into(s: &Section, path: Vec<usize>, out: &mut Vec<FlatLine>) {
         is_heading: true,
         body_idx: None,
         line: s.heading.clone(),
+        margin: s.margin.clone(),
+        fill_bg: None,
     });
     if s.collapsed {
         return;
@@ -190,6 +218,8 @@ fn flatten_into(s: &Section, path: Vec<usize>, out: &mut Vec<FlatLine>) {
             is_heading: false,
             body_idx: Some(i),
             line: l.clone(),
+            margin: None,
+            fill_bg: None,
         });
     }
     for (i, child) in s.children.iter().enumerate() {
@@ -206,6 +236,8 @@ fn spacer(path: Vec<usize>, id: SectionId) -> FlatLine {
         is_heading: false,
         body_idx: None,
         line: Line::default(),
+        margin: None,
+        fill_bg: None,
     }
 }
 
@@ -235,6 +267,15 @@ mod tests {
         assert!(flat[0].is_heading);
         assert_eq!(flat[2].path, vec![0, 0]);
         assert_eq!(flat[4].body_idx, Some(1));
+    }
+
+    #[test]
+    fn compact_root_omits_inter_child_spacers() {
+        let mut t = tree();
+        t.compact = true;
+        let texts: Vec<String> = flatten(&t).iter().map(|f| f.line.to_string()).collect();
+        // Same as the default flatten but without the "" spacer before "C".
+        assert_eq!(texts, vec!["A", "a1", "B", "b1", "b2", "C"]);
     }
 
     #[test]

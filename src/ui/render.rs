@@ -6,6 +6,7 @@ use ratatui::style::{Modifier, Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Frame;
+use unicode_width::UnicodeWidthChar;
 
 use crate::app::App;
 use crate::keymap::format_keys;
@@ -74,10 +75,17 @@ fn draw_pane(f: &mut Frame, app: &mut App, area: Rect) {
         .iter()
         .enumerate()
         .map(|(i, fl)| {
+            let mut content = match &fl.margin {
+                Some(m) => with_margin(&fl.line, m, area.width),
+                None => fl.line.clone(),
+            };
+            if let Some(bg) = fl.fill_bg {
+                content = fill_background(content, bg, area.width);
+            }
             let mut line = if top + i == cursor {
-                highlight(&fl.line, cursor_bg)
+                highlight(&content, cursor_bg)
             } else {
-                fl.line.clone()
+                content
             };
             if let Some(q) = &query {
                 line = highlight_query(line, q, search_style);
@@ -86,6 +94,82 @@ fn draw_pane(f: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
     f.render_widget(Paragraph::new(Text::from(lines)), area);
+}
+
+/// One blank column kept at the far right so the margin never touches the edge.
+const MARGIN_RIGHT_GAP: usize = 1;
+/// Minimum blank columns between the content and the margin block.
+const MARGIN_LEFT_GAP: usize = 2;
+/// Below this many content columns the margin is dropped rather than squeezing
+/// the subject into nothing (narrow terminals).
+const MARGIN_MIN_CONTENT: usize = 12;
+
+/// Lay the heading out as two aligned regions: `content` on the left (padded,
+/// and truncated when too long so it never eats into the margin) and the
+/// fixed-width `margin` block flush to the right with a one-column gap. All
+/// arithmetic is in display columns, so full-width glyphs stay aligned.
+fn with_margin(content: &Line<'static>, margin: &Line<'static>, width: u16) -> Line<'static> {
+    let total = width as usize;
+    let mw = margin.width();
+    let reserved = mw + MARGIN_LEFT_GAP + MARGIN_RIGHT_GAP;
+    // No room for the margin — just show the (possibly truncated) content.
+    if total < reserved + MARGIN_MIN_CONTENT {
+        return Line::from(truncate_line(content, total).0);
+    }
+    let content_col = total - reserved;
+    let (mut spans, used) = truncate_line(content, content_col);
+    spans.push(Span::raw(spaces(content_col - used + MARGIN_LEFT_GAP)));
+    spans.extend(margin.spans.iter().cloned());
+    spans.push(Span::raw(spaces(MARGIN_RIGHT_GAP)));
+    Line::from(spans)
+}
+
+fn spaces(n: usize) -> String {
+    " ".repeat(n)
+}
+
+/// Extend `line`'s background across the full pane width by appending a
+/// `bg`-colored blank tail (the log header bar). The line's own spans keep
+/// their styles; only the trailing gap is added.
+fn fill_background(line: Line<'static>, bg: ratatui::style::Color, width: u16) -> Line<'static> {
+    let used = line.width();
+    let mut spans = line.spans;
+    if (width as usize) > used {
+        spans.push(Span::styled(spaces(width as usize - used), Style::new().bg(bg)));
+    }
+    Line::from(spans)
+}
+
+/// Truncate a styled line to at most `max` display columns, preserving span
+/// styles and never splitting a full-width glyph. Returns the surviving spans
+/// and their total display width (`<= max`); an ellipsis takes the last column
+/// when anything was cut.
+fn truncate_line(line: &Line<'static>, max: usize) -> (Vec<Span<'static>>, usize) {
+    if line.width() <= max {
+        return (line.spans.to_vec(), line.width());
+    }
+    let budget = max.saturating_sub(1); // reserve one column for '…'
+    let mut out: Vec<Span<'static>> = Vec::new();
+    let mut used = 0usize;
+    'spans: for span in &line.spans {
+        let mut seg = String::new();
+        for c in span.content.chars() {
+            let w = UnicodeWidthChar::width(c).unwrap_or(0);
+            if used + w > budget {
+                if !seg.is_empty() {
+                    out.push(Span::styled(seg, span.style));
+                }
+                break 'spans;
+            }
+            seg.push(c);
+            used += w;
+        }
+        if !seg.is_empty() {
+            out.push(Span::styled(seg, span.style));
+        }
+    }
+    out.push(Span::raw("…"));
+    (out, used + 1)
 }
 
 /// Character mask of query matches in `text` (smart-case, non-overlapping).
@@ -324,6 +408,61 @@ fn draw_help(f: &mut Frame, app: &mut App, screen: Rect) {
 mod tests {
     use super::*;
     use ratatui::style::Color;
+
+    #[test]
+    fn with_margin_places_block_at_fixed_right_column_with_gap() {
+        let content = Line::from("abc".to_string());
+        let margin = Line::from("xy".to_string()); // 2 cols
+        // width 30: content col = 30 - (2 + 2 + 1) = 25; margin ends 1 col
+        // short of the edge, so a blank column is kept on the right.
+        let out = with_margin(&content, &margin, 30);
+        assert_eq!(out.to_string(), "abc                        xy ");
+        assert_eq!(out.width(), 30);
+    }
+
+    #[test]
+    fn with_margin_truncates_content_to_protect_the_column() {
+        // A subject too long for the content region gets an ellipsis; the
+        // margin still lands in the same column as short-subject rows.
+        let content = Line::from("this subject is definitely far too long to fit".to_string());
+        let margin = Line::from("Ada  2 days ago".to_string()); // 15 cols
+        let out = with_margin(&content, &margin, 40);
+        assert_eq!(out.width(), 40);
+        assert!(out.to_string().contains('…'));
+        assert!(out.to_string().ends_with("Ada  2 days ago "));
+    }
+
+    #[test]
+    fn with_margin_full_width_glyphs_do_not_break_alignment() {
+        // A CJK subject (each glyph 2 cols) must be truncated on a cell
+        // boundary and the total width must stay exactly `width`.
+        let content = Line::from("日本語のコミットメッセージ本文".to_string());
+        let margin = Line::from("著者  2 日前".to_string());
+        let out = with_margin(&content, &margin, 30);
+        assert_eq!(out.width(), 30);
+    }
+
+    #[test]
+    fn fill_background_pads_to_full_width_with_the_bg() {
+        let line = Line::from(Span::styled("Commits in HEAD".to_string(), Style::new()));
+        let out = fill_background(line, Color::Blue, 30);
+        assert_eq!(out.width(), 30);
+        // The appended tail carries the fill background.
+        assert_eq!(out.spans.last().unwrap().style.bg, Some(Color::Blue));
+    }
+
+    #[test]
+    fn with_margin_drops_margin_on_a_narrow_viewport() {
+        let content = Line::from("abcdef".to_string());
+        let margin = Line::from("Author  2 days ago".to_string());
+        // width 15 leaves no room for content + margin; margin is dropped.
+        let out = with_margin(&content, &margin, 15);
+        assert_eq!(out.to_string(), "abcdef");
+    }
+
+
+
+
 
     #[test]
     fn match_mask_smart_case_and_multiple() {

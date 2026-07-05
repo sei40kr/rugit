@@ -19,6 +19,9 @@ pub struct Pane {
     pub unstaged: Vec<FileDiff>,
     pub staged: Vec<FileDiff>,
     pub committed: Vec<FileDiff>,
+    /// For a `Log` pane: the revision args that produced it, so `g` can re-run
+    /// the same log.
+    pub log_args: Option<Vec<String>>,
 }
 
 /// Where the cursor was, expressed in section identities so it can be
@@ -45,6 +48,7 @@ impl Pane {
             unstaged: Vec::new(),
             staged: Vec::new(),
             committed: Vec::new(),
+            log_args: None,
         }
     }
 

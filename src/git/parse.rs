@@ -1,7 +1,7 @@
 //! Pure parsers for git plumbing/porcelain output. No I/O here — everything is
 //! unit-testable against fixture strings.
 
-use super::types::{BranchInfo, CommitInfo, FileDiff, Hunk, StashInfo};
+use super::types::{BranchInfo, CommitInfo, FileDiff, Hunk, LogEntry, StashInfo};
 
 /// Result of parsing `git status --porcelain=v2 --branch -z`.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -191,6 +191,27 @@ pub fn parse_log(text: &str) -> Vec<CommitInfo> {
         .collect()
 }
 
+/// Parse the log buffer's `--format=%h%x1f%D%x1f%s%x1f%an%x1f%ar` (one commit
+/// per line, fields separated by US, 0x1f). Missing trailing fields are empty.
+pub fn parse_log_entries(text: &str) -> Vec<LogEntry> {
+    text.lines()
+        .filter_map(|l| {
+            let mut f = l.split('\x1f');
+            let hash = f.next()?.to_string();
+            if hash.is_empty() {
+                return None;
+            }
+            Some(LogEntry {
+                hash,
+                refs: f.next().unwrap_or("").to_string(),
+                subject: f.next().unwrap_or("").to_string(),
+                author: f.next().unwrap_or("").to_string(),
+                date: f.next().unwrap_or("").to_string(),
+            })
+        })
+        .collect()
+}
+
 /// Parse `git stash list --format=%gd%x1f%s`.
 pub fn parse_stash_list(text: &str) -> Vec<StashInfo> {
     text.lines()
@@ -311,5 +332,20 @@ Binary files a/img.png and b/img.png differ
                 message: "WIP on main".into()
             }]
         );
+    }
+
+    #[test]
+    fn log_entries_with_and_without_decorations() {
+        let raw = "abc123\x1fHEAD -> main, origin/main\x1ffix: thing\x1fAda\x1f2 days ago\n\
+                   def456\x1f\x1fplain commit\x1fGrace\x1f3 weeks ago\n";
+        let entries = parse_log_entries(raw);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].hash, "abc123");
+        assert_eq!(entries[0].refs, "HEAD -> main, origin/main");
+        assert_eq!(entries[0].subject, "fix: thing");
+        assert_eq!(entries[0].author, "Ada");
+        assert_eq!(entries[0].date, "2 days ago");
+        assert_eq!(entries[1].refs, "");
+        assert_eq!(entries[1].subject, "plain commit");
     }
 }

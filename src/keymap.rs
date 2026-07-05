@@ -253,6 +253,7 @@ impl Keymap {
 pub enum PaneKind {
     Status,
     Revision,
+    Log,
     ProcessLog,
 }
 
@@ -322,6 +323,7 @@ pub fn default_keymaps() -> Keymaps {
         ("P", TransientPush),
         ("F", TransientPull),
         ("f", TransientFetch),
+        ("l", TransientLog),
         ("?", Help),
         ("$", ProcessLog),
     ] {

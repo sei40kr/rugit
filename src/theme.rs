@@ -39,13 +39,19 @@ macro_rules! theme {
 theme! {
     // Sections
     section_heading: Color::Cyan     => "section-heading",   // group titles
-    branch:          Color::Cyan     => "branch",
+    header_bg:       Color::Blue     => "header-bg",         // log header bar background
+    header_fg:       Color::White    => "header-fg",         // log header bar text
+    branch:          Color::Cyan     => "branch",            // local branch / HEAD in log
+    branch_remote:   Color::Green    => "branch-remote",     // remote-tracking ref in log
+    tag:             Color::Yellow   => "tag",               // tag ref in log
     upstream:        Color::Green    => "upstream",
     repo_state:      Color::Red      => "repo-state",        // "merging" etc.
     untracked:       Color::Magenta  => "untracked",
     conflict:        Color::Red      => "conflict",
     file_status:     Color::Blue     => "file-status",       // "modified" prefix
     hash:            Color::Yellow   => "hash",              // commit / stash ids
+    log_author:      Color::Blue     => "log-author",        // log margin author
+    log_date:        Color::Gray     => "log-date",          // log margin date
     // Diffs
     hunk_header:     Color::Cyan     => "hunk-header",
     diff_add:        Color::Green    => "diff-add",

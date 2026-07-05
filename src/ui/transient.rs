@@ -2,7 +2,7 @@
 //! data: groups of switches and actions. While one is open it captures all
 //! keys; actions collect the enabled switches into CLI flags.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ratatui::crossterm::event::KeyCode;
 use ratatui::style::{Modifier, Style, Stylize};
@@ -28,11 +28,26 @@ pub enum TransientAction {
     CreateCheckoutBranch,
     /// Opens a minibuffer for the new branch name (no checkout).
     CreateBranch,
+    /// Log the current branch (HEAD).
+    LogCurrent,
+    /// Log all refs (`--all`).
+    LogAll,
+    /// Opens a picker over refs, then logs the chosen one.
+    LogOther,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum Item {
+    /// A boolean flag, toggled on/off.
     Switch {
+        key: &'static str,
+        flag: &'static str,
+        desc: &'static str,
+    },
+    /// A flag that takes a value (e.g. `--author=`). Selecting it prompts for
+    /// the value; `flag` must end so the value appends directly (`--author=`,
+    /// `--max-count=`). Set to empty to clear it.
+    Arg {
         key: &'static str,
         flag: &'static str,
         desc: &'static str,
@@ -47,7 +62,7 @@ pub enum Item {
 impl Item {
     fn key(&self) -> &'static str {
         match self {
-            Item::Switch { key, .. } | Item::Action { key, .. } => key,
+            Item::Switch { key, .. } | Item::Arg { key, .. } | Item::Action { key, .. } => key,
         }
     }
 }
@@ -238,12 +253,77 @@ pub static FETCH: TransientDef = TransientDef {
     ],
 };
 
+pub static LOG: TransientDef = TransientDef {
+    title: "Log",
+    groups: &[
+        GroupDef {
+            title: "Arguments",
+            items: &[
+                // --graph is intentionally omitted: it prefixes graph art to
+                // each line, which our `--format` field parser can't read.
+                Item::Arg {
+                    key: "-n",
+                    flag: "--max-count=",
+                    desc: "Limit number of commits",
+                },
+                Item::Arg {
+                    key: "-A",
+                    flag: "--author=",
+                    desc: "Limit to author",
+                },
+                Item::Arg {
+                    key: "-F",
+                    flag: "--grep=",
+                    desc: "Search commit messages",
+                },
+                Item::Switch {
+                    key: "-m",
+                    flag: "--no-merges",
+                    desc: "Omit merge commits",
+                },
+                Item::Switch {
+                    key: "-r",
+                    flag: "--reverse",
+                    desc: "Show oldest first",
+                },
+                Item::Switch {
+                    key: "-f",
+                    flag: "--first-parent",
+                    desc: "Follow first parent only",
+                },
+            ],
+        },
+        GroupDef {
+            title: "Actions",
+            items: &[
+                Item::Action {
+                    key: "l",
+                    desc: "Log current branch",
+                    action: TransientAction::LogCurrent,
+                },
+                Item::Action {
+                    key: "o",
+                    desc: "Log other branch/revision",
+                    action: TransientAction::LogOther,
+                },
+                Item::Action {
+                    key: "a",
+                    desc: "Log all references",
+                    action: TransientAction::LogAll,
+                },
+            ],
+        },
+    ],
+};
+
 /// A currently-open transient: the definition plus toggled switches and the
 /// multi-char key input buffer (switch keys like "-a" are two keystrokes).
 #[derive(Debug, Clone)]
 pub struct TransientState {
     pub def: &'static TransientDef,
     pub enabled: BTreeSet<&'static str>,
+    /// Value arguments (`--author=` → "ada"), set via a value prompt.
+    pub values: BTreeMap<&'static str, String>,
     pub pending: String,
 }
 
@@ -252,6 +332,11 @@ pub struct TransientState {
 pub enum TransientResult {
     /// Key consumed (switch toggled or prefix pending); keep the menu open.
     Consumed,
+    /// Prompt for this value argument's value; the menu stays open.
+    Prompt {
+        flag: &'static str,
+        desc: &'static str,
+    },
     /// Run this action with these collected CLI flags; menu closes.
     Invoke(TransientAction, Vec<String>),
     /// Close without running anything.
@@ -265,12 +350,24 @@ impl TransientState {
         Self {
             def,
             enabled: BTreeSet::new(),
+            values: BTreeMap::new(),
             pending: String::new(),
         }
     }
 
+    /// Set (or clear, when empty) a value argument's value.
+    pub fn set_value(&mut self, flag: &'static str, value: String) {
+        if value.is_empty() {
+            self.values.remove(flag);
+        } else {
+            self.values.insert(flag, value);
+        }
+    }
+
     pub fn args(&self) -> Vec<String> {
-        self.enabled.iter().map(|f| f.to_string()).collect()
+        let mut out: Vec<String> = self.enabled.iter().map(|f| f.to_string()).collect();
+        out.extend(self.values.iter().map(|(flag, val)| format!("{flag}{val}")));
+        out
     }
 
     pub fn on_key(&mut self, kp: &KeyPress) -> TransientResult {
@@ -301,6 +398,7 @@ impl TransientState {
                     }
                     TransientResult::Consumed
                 }
+                Item::Arg { flag, desc, .. } => TransientResult::Prompt { flag, desc },
                 Item::Action { action, .. } => TransientResult::Invoke(action, self.args()),
             }
         } else if items().any(|i| i.key().starts_with(&self.pending)) {
@@ -335,6 +433,18 @@ impl TransientState {
                             Span::raw(desc.to_string()),
                         ]));
                     }
+                    Item::Arg { key, flag, desc } => {
+                        let (shown, style) = match self.values.get(flag) {
+                            Some(v) => (format!("{flag}{v}"), Style::new().fg(t.command).bold()),
+                            None => (flag.to_string(), Style::new().dim()),
+                        };
+                        out.push(Line::from(vec![
+                            Span::raw(" "),
+                            Span::styled(format!("{key:<4}"), Style::new().fg(t.key)),
+                            Span::styled(format!("{shown:<22}"), style),
+                            Span::raw(desc.to_string()),
+                        ]));
+                    }
                     Item::Action { key, desc, .. } => {
                         out.push(Line::from(vec![
                             Span::raw(" "),
@@ -357,6 +467,7 @@ mod tests {
     fn key(c: char) -> KeyPress {
         KeyPress::new(KeyCode::Char(c), KeyModifiers::NONE)
     }
+
 
     #[test]
     fn switch_key_is_a_two_key_sequence() {
@@ -381,6 +492,39 @@ mod tests {
             }
             other => panic!("unexpected: {other:?}"),
         }
+    }
+
+    #[test]
+    fn value_arg_prompts_then_collects_flag_with_value() {
+        let mut st = TransientState::new(&LOG);
+        // "-n" is a two-key sequence that requests a value prompt.
+        assert_eq!(st.on_key(&key('-')), TransientResult::Consumed);
+        assert_eq!(
+            st.on_key(&key('n')),
+            TransientResult::Prompt {
+                flag: "--max-count=",
+                desc: "Limit number of commits",
+            }
+        );
+        st.set_value("--max-count=", "50".into());
+        // A boolean switch alongside it.
+        st.on_key(&key('-'));
+        st.on_key(&key('m'));
+        match st.on_key(&key('l')) {
+            TransientResult::Invoke(TransientAction::LogCurrent, args) => {
+                assert_eq!(args, vec!["--no-merges", "--max-count=50"]);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn empty_value_clears_the_arg() {
+        let mut st = TransientState::new(&LOG);
+        st.set_value("--author=", "ada".into());
+        assert_eq!(st.args(), vec!["--author=ada"]);
+        st.set_value("--author=", String::new());
+        assert!(st.args().is_empty());
     }
 
     #[test]

@@ -4,9 +4,10 @@
 
 use ratatui::style::{Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
+use unicode_width::UnicodeWidthStr;
 
 use crate::git::client::ProcessEntry;
-use crate::git::types::{DiffArea, FileDiff, StatusSnapshot};
+use crate::git::types::{DiffArea, FileDiff, LogEntry, StatusSnapshot};
 use crate::theme::Theme;
 use crate::ui::section::{Group, Section, SectionValue};
 
@@ -260,6 +261,122 @@ pub fn build_revision(t: &Theme, header: &str, files: &[FileDiff]) -> Section {
     root
 }
 
+/// Log buffer: one commit per line, each a `Commit` section so RET (visit)
+/// opens it in a revision buffer.
+pub fn build_log(t: &Theme, title: &str, entries: &[LogEntry]) -> Section {
+    let mut root = Section::root();
+    // Commits are top-level sections; render them as one tight list rather
+    // than blank-line-separated like status groups.
+    root.compact = true;
+    // Header naming what is being logged. Mirrors magit's log header-line
+    // ("Commits in HEAD"); the caller supplies the whole phrase as the title.
+    // Rendered as a full-width bar (see `body_fill`) in the header colors.
+    root.body_fill = Some(t.header_bg);
+    root.body.push(Line::from(Span::styled(
+        title.to_string(),
+        heading_style().fg(t.header_fg).bg(t.header_bg),
+    )));
+    if entries.is_empty() {
+        root.body.push(Line::from(Span::styled(
+            "No commits.".to_string(),
+            Style::new().dim(),
+        )));
+        return root;
+    }
+    // The margin is a fixed two-column block (author left-aligned, date
+    // right-aligned) sized to the widest of each across the whole buffer, so
+    // every row's columns line up. Widths are in display columns, so CJK /
+    // full-width names don't skew the alignment.
+    let author_col = entries.iter().map(|e| e.author.width()).max().unwrap_or(0);
+    let date_col = entries.iter().map(|e| e.date.width()).max().unwrap_or(0);
+    for e in entries {
+        let mut spans = vec![
+            Span::styled(e.hash.clone(), Style::new().fg(t.hash)),
+            Span::raw(" "),
+        ];
+        spans.extend(ref_spans(t, &e.refs));
+        spans.push(Span::raw(e.subject.clone()));
+        let mut sec = Section::new(
+            0,
+            &format!("commit:{}", e.hash),
+            SectionValue::Commit {
+                hash: e.hash.clone(),
+            },
+            Line::from(spans),
+        );
+        sec.margin = log_margin(t, &e.author, author_col, &e.date, date_col);
+        root.children.push(sec);
+    }
+    root
+}
+
+/// The log's right-margin block: `author` (left-aligned in `author_col`, in the
+/// `log_author` role), two spaces, then `date` (right-aligned in `date_col`, in
+/// the `log_date` role). `None` when both are empty. Padding is by display
+/// width so the columns stay aligned with wide glyphs.
+fn log_margin(
+    t: &Theme,
+    author: &str,
+    author_col: usize,
+    date: &str,
+    date_col: usize,
+) -> Option<Line<'static>> {
+    if author.is_empty() && date.is_empty() {
+        return None;
+    }
+    Some(Line::from(vec![
+        Span::styled(pad_end(author, author_col), Style::new().fg(t.log_author)),
+        Span::raw("  "),
+        Span::styled(pad_start(date, date_col), Style::new().fg(t.log_date)),
+    ]))
+}
+
+/// Right-pad `s` with spaces to `cols` display columns (no-op if already wider).
+fn pad_end(s: &str, cols: usize) -> String {
+    let w = s.width();
+    if w >= cols {
+        s.to_string()
+    } else {
+        format!("{s}{}", " ".repeat(cols - w))
+    }
+}
+
+/// Left-pad `s` with spaces to `cols` display columns (no-op if already wider).
+fn pad_start(s: &str, cols: usize) -> String {
+    let w = s.width();
+    if w >= cols {
+        s.to_string()
+    } else {
+        format!("{}{s}", " ".repeat(cols - w))
+    }
+}
+
+/// Turn git's `%D` decoration string ("HEAD -> main, origin/x, tag: v1")
+/// into colored tokens, magit-style: the current branch (in the branch color),
+/// remotes and tags in their own roles, no enclosing parentheses. Following
+/// magit, the bare `HEAD` pointer and symbolic `*/HEAD` refs are not shown.
+fn ref_spans(t: &Theme, refs: &str) -> Vec<Span<'static>> {
+    let mut out = Vec::new();
+    for raw in refs.split(", ") {
+        let raw = raw.trim();
+        if raw.is_empty() || raw == "HEAD" || raw.ends_with("/HEAD") {
+            continue;
+        }
+        if let Some(branch) = raw.strip_prefix("HEAD -> ") {
+            // Current branch — the "HEAD ->" pointer itself is elided.
+            out.push(Span::styled(branch.to_string(), Style::new().fg(t.branch).bold()));
+        } else if let Some(tag) = raw.strip_prefix("tag: ") {
+            out.push(Span::styled(tag.to_string(), Style::new().fg(t.tag).bold()));
+        } else if raw.contains('/') {
+            out.push(Span::styled(raw.to_string(), Style::new().fg(t.branch_remote)));
+        } else {
+            out.push(Span::styled(raw.to_string(), Style::new().fg(t.branch)));
+        }
+        out.push(Span::raw(" "));
+    }
+    out
+}
+
 /// The `$` buffer: every git command run by the app, newest last.
 pub fn build_process_log(t: &Theme, entries: &[ProcessEntry]) -> Section {
     let mut root = Section::root();
@@ -292,4 +409,103 @@ pub fn build_process_log(t: &Theme, entries: &[ProcessEntry]) -> Section {
         root.children.push(sec);
     }
     root
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(hash: &str, refs: &str, subject: &str) -> LogEntry {
+        LogEntry {
+            hash: hash.into(),
+            refs: refs.into(),
+            subject: subject.into(),
+            author: "Ada".into(),
+            date: "2 days ago".into(),
+        }
+    }
+
+    #[test]
+    fn log_decorations_drop_head_and_drop_parentheses() {
+        let t = Theme::default();
+        let root = build_log(
+            &t,
+            "Commits in HEAD",
+            &[entry(
+                "abc123",
+                "HEAD -> main, origin/main, origin/HEAD, tag: v1.0",
+                "fix: thing",
+            )],
+        );
+        let heading = root.children[0].heading.to_string();
+        // magit-style: no parens, the "HEAD ->" pointer and origin/HEAD elided,
+        // the current branch and remaining refs shown as tokens.
+        assert_eq!(heading, "abc123 main origin/main v1.0 fix: thing");
+    }
+
+    #[test]
+    fn log_ref_tokens_carry_type_colors() {
+        let t = Theme::default();
+        let root = build_log(&t, "Log HEAD", &[entry("abc", "origin/main, tag: v1", "s")]);
+        let fgs: Vec<_> = root.children[0]
+            .heading
+            .spans
+            .iter()
+            .map(|s| (s.content.to_string(), s.style.fg))
+            .collect();
+        assert!(fgs.contains(&("origin/main".to_string(), Some(t.branch_remote))));
+        assert!(fgs.contains(&("v1".to_string(), Some(t.tag))));
+    }
+
+    #[test]
+    fn log_author_and_date_are_colored_columns_in_the_margin() {
+        let t = Theme::default();
+        let root = build_log(&t, "Log HEAD", &[entry("abc", "", "subject")]);
+        let sec = &root.children[0];
+        // Author/date are not in the heading — they live in the right margin.
+        assert_eq!(sec.heading.to_string(), "abc subject");
+        let margin = sec.margin.as_ref().unwrap();
+        assert_eq!(margin.to_string(), "Ada  2 days ago");
+        let fgs: Vec<_> = margin.spans.iter().map(|s| s.style.fg).collect();
+        assert!(fgs.contains(&Some(t.log_author)));
+        assert!(fgs.contains(&Some(t.log_date)));
+    }
+
+    #[test]
+    fn log_header_names_the_range_magit_style() {
+        let t = Theme::default();
+        let root = build_log(&t, "Commits in HEAD", &[entry("a", "", "s1"), entry("b", "", "s2")]);
+        // First body line is the header verbatim; commits are children.
+        assert_eq!(root.body[0].to_string(), "Commits in HEAD");
+        assert_eq!(root.children.len(), 2);
+    }
+
+    #[test]
+    fn log_header_is_a_colored_full_width_bar() {
+        let t = Theme::default();
+        let root = build_log(&t, "Commits in HEAD", &[entry("a", "", "s")]);
+        // The header carries the header colors, and the root requests a
+        // full-width fill in the header background so it renders as a bar.
+        let style = root.body[0].spans[0].style;
+        assert_eq!(style.fg, Some(t.header_fg));
+        assert_eq!(style.bg, Some(t.header_bg));
+        assert_eq!(root.body_fill, Some(t.header_bg));
+    }
+
+    #[test]
+    fn log_has_no_blank_line_under_the_header() {
+        use crate::ui::section::flatten;
+        let t = Theme::default();
+        let root = build_log(&t, "Commits in HEAD", &[entry("a", "", "s1")]);
+        let texts: Vec<String> = flatten(&root).iter().map(|f| f.line.to_string()).collect();
+        // Header immediately followed by the first commit — no spacer.
+        assert_eq!(texts, vec!["Commits in HEAD", "a s1"]);
+    }
+
+    #[test]
+    fn log_root_is_compact() {
+        let t = Theme::default();
+        let root = build_log(&t, "Log HEAD", &[entry("abc", "", "subject")]);
+        assert!(root.compact);
+    }
 }

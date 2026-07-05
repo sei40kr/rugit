@@ -114,7 +114,7 @@ src/
 └ ui/
    ├ section.rs  section tree + flattening + SectionId
    ├ pane.rs     cursor/scroll/folding/refresh-survival
-   ├ build.rs    snapshot → tree builders (status / revision / process log)
+   ├ build.rs    snapshot → tree builders (status / revision / log / process log)
    ├ transient.rs data-driven transient engine + menu definitions
    ├ input.rs    minibuffer input + picker (filtering selection)
    └ render.rs   drawing + overlays (input, transient, which-key, help, confirm)
@@ -181,6 +181,23 @@ visible tree is flattened into a cached `Vec<FlatLine>` (each line carries
 `path: Vec<usize>`, its child-index route from the root). It is recomputed
 only on fold/refresh. Cursor movement, scrolling, and section jumps all
 reduce to index arithmetic on this Vec.
+
+**(d) Right margin** — a heading may carry an optional `margin: Line`
+(currently only the log's author + relative date). Because right-alignment
+needs the viewport width, the margin is *not* baked into the heading at
+build time; it rides along on the `FlatLine` and `draw_pane` places it as a
+fixed-width block flush to the right (one blank column kept at the far
+edge), truncating the *content* — never the margin — so the columns line up
+across rows regardless of subject length. The margin itself is built as two
+sub-columns (author left-aligned, date right-aligned) sized to the widest of
+each across the buffer, so both align vertically. All of this is measured in
+**display columns** (`unicode-width`), never char counts, so full-width
+(CJK) glyphs stay aligned and truncation never splits a wide glyph. This
+keeps `build.rs` width-agnostic. The log also sets `compact` on its root so
+its top-level commit sections render as one tight list instead of
+blank-line-separated like status groups; ref decorations (`%D`) render as
+color-coded tokens (`branch` / `branch-remote` / `tag` roles) rather than a
+parenthesized blob.
 
 ## 4. Scroll management
 
@@ -266,26 +283,35 @@ shared.
 ```rust
 struct TransientDef { title, groups: &[GroupDef] }
 enum Item {
-    Switch { key: "-a", flag: "--all", desc },   // keys are multi-keystroke sequences
+    Switch { key: "-a", flag: "--all", desc },        // boolean toggle
+    Arg    { key: "-n", flag: "--max-count=", desc }, // takes a value
     Action { key: "c", desc, action: TransientAction },
 }
 ```
 
 - While open, a transient is the top layer of key resolution and captures
-  every key. Switch keys like `-a` are two keystrokes, matched by prefix.
+  every key. Switch/Arg keys like `-a` are two keystrokes, matched by prefix.
 - Toggling a `Switch` mutates state and re-renders (enabled switches change
   color).
-- Invoking an `Action` collects the enabled flags into a `Vec<String>`
-  passed to execution (`git commit --amend --signoff`, ...).
+- Selecting an `Arg` returns `Prompt { flag, desc }`; the app opens a
+  minibuffer (`InputPurpose::TransientArg(flag)`) *over* the still-open
+  transient, and the submit writes the value back into `state.values`. The
+  `flag` ends in `=` so `args()` emits a single `--author=ada` token; an empty
+  submit clears it.
+- Invoking an `Action` collects enabled switches + value args into a
+  `Vec<String>` passed to execution (`git commit --amend --signoff`, ...).
 - `TransientAction` is a separate enum from `Command`. Commit-family actions
-  route to the editor handoff; push/pull/fetch run in the background.
+  route to the editor handoff; push/pull/fetch run in the background; log
+  actions append their rev selector and open a log buffer.
 
 Current definitions: Commit (`-a/-e/-n/-s`; commit/amend/extend), Branch
 (checkout / create+checkout / create), Push (`-f/-F/-n`; upstream /
-set-upstream), Pull (`-r/-a`), Fetch (`-p`; upstream/all).
+set-upstream), Pull (`-r/-a`), Fetch (`-p`; upstream/all), Log
+(`-n`/`-A`/`-F` values, `-m/-r/-f` switches; current / other / all
+references). The log's `--graph` is intentionally excluded — it prefixes
+graph art the `--format` field parser can't read (see §on the log buffer).
 
-Not yet implemented: value-taking `Arg` items (`=u --set-upstream=<val>`),
-persisting switch defaults.
+Not yet implemented: persisting switch/arg defaults across sessions.
 
 ## 6.5 Minibuffer input and the picker
 
@@ -378,7 +404,8 @@ Incremental, isearch-style. `/` opens a minibuffer (`InputPurpose::Search`).
 
 - Word-level diff highlighting (`similar`), syntax highlighting (`syntect`,
   feature-flagged)
-- A log buffer (rides the section-tree foundation as-is)
+- Graph rendering in the log buffer (`--graph`), and inline diff expansion of
+  a commit under point
 - Region selection for multi-line staging; discarding directly from staged
 - Transients for rebase / stash / merge; rename/delete in the branch
   transient

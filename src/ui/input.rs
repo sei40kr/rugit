@@ -1,9 +1,12 @@
 //! Minibuffer input and picker — a single component with two modes:
 //! - plain input (`candidates` empty): free text, e.g. a new branch name
-//! - picker: text filters `candidates` (case-insensitive substring),
-//!   UP/DOWN (or C-p/C-n) move the selection, TAB completes, RET submits
-//!   the selected candidate (or the raw text when nothing matches).
+//! - picker: text filters `candidates` (case-insensitive fuzzy subsequence,
+//!   best match first), UP/DOWN (or C-p/C-n) move the selection, TAB
+//!   completes, RET submits the selected candidate (or the raw text when
+//!   nothing matches).
 
+use fuzzy_matcher::skim::SkimMatcherV2;
+use fuzzy_matcher::FuzzyMatcher;
 use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::style::{Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
@@ -104,14 +107,35 @@ impl InputState {
         !self.candidates.is_empty()
     }
 
-    /// Candidates matching the current text (case-insensitive substring).
+    /// Candidates fuzzy-matching the current text, best score first (ties
+    /// keep the original candidate order).
     pub fn filtered(&self) -> Vec<&str> {
-        let needle = self.text.to_lowercase();
-        self.candidates
+        self.matches().into_iter().map(|(c, _)| c).collect()
+    }
+
+    /// Like `filtered`, but each candidate carries the char indices matched
+    /// by the current text, for highlighting.
+    fn matches(&self) -> Vec<(&str, Vec<usize>)> {
+        // Empty input: everything matches, in the original order.
+        if self.text.is_empty() {
+            return self
+                .candidates
+                .iter()
+                .map(|c| (c.as_str(), Vec::new()))
+                .collect();
+        }
+        let matcher = SkimMatcherV2::default().ignore_case();
+        let mut scored: Vec<(i64, &str, Vec<usize>)> = self
+            .candidates
             .iter()
-            .filter(|c| c.to_lowercase().contains(&needle))
-            .map(String::as_str)
-            .collect()
+            .filter_map(|c| {
+                matcher
+                    .fuzzy_indices(c, &self.text)
+                    .map(|(score, indices)| (score, c.as_str(), indices))
+            })
+            .collect();
+        scored.sort_by(|a, b| b.0.cmp(&a.0));
+        scored.into_iter().map(|(_, c, ix)| (c, ix)).collect()
     }
 
     pub fn on_key(&mut self, kp: &KeyPress) -> InputResult {
@@ -301,6 +325,51 @@ mod tests {
             st.on_key(&key(KeyCode::Enter)),
             InputResult::Submit("feature/b".into())
         );
+    }
+
+    #[test]
+    fn picker_matches_fuzzy_subsequences() {
+        let mut st = InputState::picker(
+            "Checkout",
+            InputPurpose::CheckoutRev,
+            vec!["feature/a".into(), "feature/b".into(), "main".into()],
+        );
+        type_str(&mut st, "fb");
+        assert_eq!(st.filtered(), vec!["feature/b"]);
+    }
+
+    #[test]
+    fn picker_ranks_better_matches_first() {
+        let st = InputState {
+            text: "ma".into(),
+            ..InputState::picker(
+                "Checkout",
+                InputPurpose::CheckoutRev,
+                vec!["dev-map".into(), "main".into(), "master".into()],
+            )
+        };
+        // Prefix matches outrank a late match; ties keep candidate order.
+        assert_eq!(st.filtered(), vec!["main", "master", "dev-map"]);
+    }
+
+    #[test]
+    fn matching_is_case_insensitive_with_char_indices() {
+        let st = InputState {
+            text: "fa".into(),
+            ..InputState::picker(
+                "Checkout",
+                InputPurpose::CheckoutRev,
+                vec!["Feature/A".into(), "日本語".into()],
+            )
+        };
+        assert_eq!(st.filtered(), vec!["Feature/A"]);
+
+        let st = InputState {
+            text: "本語".into(),
+            ..st
+        };
+        let matches = st.matches();
+        assert_eq!(matches, vec![("日本語", vec![1, 2])]); // char indices, multibyte-safe
     }
 
     #[test]

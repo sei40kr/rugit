@@ -343,10 +343,11 @@ name), it opens an `InputState`. One component, two modes:
   editing (Left/Right/Home/End/Backspace/Delete/C-u). Multibyte-safe — the
   cursor is a char index.
 - **picker**: providing `candidates` turns it into a filtering selector.
-  The typed text filters with case-insensitive substring matching, UP/DOWN
-  (C-p/C-n) move the selection, TAB completes the selection into the input,
-  RET submits the selected candidate — or, with zero matches, the raw typed
-  text (which is how checking out a tag or SHA works).
+  The typed text filters with case-insensitive fuzzy matching (the
+  `fuzzy-matcher` crate's skim algorithm, best score first), UP/DOWN
+  (C-p/C-n) move the selection, TAB completes the selection into the
+  input, RET submits the selected candidate — or, with zero matches, the
+  raw typed text (which is how checking out a tag or SHA works).
 
 Key-resolution priority: **confirm > input > help > transient > keymap**.
 The submitted value is dispatched on `InputPurpose` (CheckoutRev /

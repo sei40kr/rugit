@@ -91,30 +91,50 @@ impl GitClient {
     }
 
     /// Read everything the status buffer needs. Runs on a worker thread.
+    ///
+    /// The five reads are independent, and on a large repo `status` and
+    /// `diff` each stat the whole worktree — running them serially adds
+    /// their latencies, so they run on scoped threads instead.
     pub fn read_snapshot(&self) -> Result<StatusSnapshot, GitError> {
-        let status = self.read(&["status", "--porcelain=v2", "--branch", "-z"])?;
-        let st = parse::parse_status_v2(&status.stdout);
-
-        let unstaged = parse::parse_diff(&self.read(&["diff", "--no-ext-diff"])?.stdout);
-        let staged_args: &[&str] = if st.branch.oid.is_some() {
-            &["diff", "--no-ext-diff", "--cached"]
-        } else {
-            &["diff", "--no-ext-diff", "--cached", EMPTY_TREE]
-        };
-        let staged = parse::parse_diff(&self.read(staged_args)?.stdout);
-
-        let (head_summary, recent) = if st.branch.oid.is_some() {
-            let summary = self.read(&["log", "-1", "--format=%h %s"])?;
-            let log = self.read(&["log", "-n", "10", "--format=%h\u{1f}%D\u{1f}%s"])?;
+        let (status, unstaged, staged, log, stashes) = std::thread::scope(|s| {
+            let status = s.spawn(|| self.read(&["status", "--porcelain=v2", "--branch", "-z"]));
+            let unstaged = s.spawn(|| self.read(&["diff", "--no-ext-diff"]));
+            let staged = s.spawn(|| self.run(&["diff", "--no-ext-diff", "--cached"]));
+            let log = s.spawn(|| self.run(&["log", "-n", "10", "--format=%h\u{1f}%D\u{1f}%s"]));
+            let stashes = s.spawn(|| self.run(&["stash", "list", "--format=%gd\u{1f}%s"]));
             (
-                Some(summary.stdout.trim_end().to_string()),
-                parse::parse_log_entries(&log.stdout),
+                status.join().unwrap(),
+                unstaged.join().unwrap(),
+                staged.join().unwrap(),
+                log.join().unwrap(),
+                stashes.join().unwrap(),
             )
+        });
+        let st = parse::parse_status_v2(&status?.stdout);
+        let unstaged = parse::parse_diff(&unstaged?.stdout);
+
+        // `--cached` needs HEAD; on an unborn branch it fails, so retry
+        // against the empty tree (such repos are tiny — serial is fine).
+        let staged = staged?;
+        let staged = if staged.ok() {
+            parse::parse_diff(&staged.stdout)
         } else {
-            (None, Vec::new())
+            let out = self.read(&["diff", "--no-ext-diff", "--cached", EMPTY_TREE])?;
+            parse::parse_diff(&out.stdout)
         };
 
-        let stashes = self.run(&["stash", "list", "--format=%gd\u{1f}%s"])?.stdout;
+        // `log` also fails on an unborn branch: no commits, no head summary.
+        // The head summary is the first log row, replacing a separate `log -1`.
+        let (head_summary, recent) = match log? {
+            out if out.ok() => {
+                let recent = parse::parse_log_entries(&out.stdout);
+                let head = recent.first().map(|e| format!("{} {}", e.hash, e.subject));
+                (head, recent)
+            }
+            _ => (None, Vec::new()),
+        };
+
+        let stashes = stashes?.stdout;
 
         Ok(StatusSnapshot {
             branch: st.branch,

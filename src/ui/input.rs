@@ -134,7 +134,7 @@ impl InputState {
                     .map(|(score, indices)| (score, c.as_str(), indices))
             })
             .collect();
-        scored.sort_by(|a, b| b.0.cmp(&a.0));
+        scored.sort_by_key(|s| std::cmp::Reverse(s.0));
         scored.into_iter().map(|(_, c, ix)| (c, ix)).collect()
     }
 
@@ -177,20 +177,16 @@ impl InputState {
                 self.cursor += 1;
                 self.selected = 0;
             }
-            KeyCode::Backspace => {
-                if self.cursor > 0 {
-                    let at = byte_index(&self.text, self.cursor - 1);
-                    self.text.remove(at);
-                    self.cursor -= 1;
-                    self.selected = 0;
-                }
+            KeyCode::Backspace if self.cursor > 0 => {
+                let at = byte_index(&self.text, self.cursor - 1);
+                self.text.remove(at);
+                self.cursor -= 1;
+                self.selected = 0;
             }
-            KeyCode::Delete => {
-                if self.cursor < self.text.chars().count() {
-                    let at = byte_index(&self.text, self.cursor);
-                    self.text.remove(at);
-                    self.selected = 0;
-                }
+            KeyCode::Delete if self.cursor < self.text.chars().count() => {
+                let at = byte_index(&self.text, self.cursor);
+                self.text.remove(at);
+                self.selected = 0;
             }
             KeyCode::Left => self.cursor = self.cursor.saturating_sub(1),
             KeyCode::Right => self.cursor = (self.cursor + 1).min(self.text.chars().count()),

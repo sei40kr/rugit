@@ -16,32 +16,34 @@ use crate::app::AppEvent;
 /// Spawn the terminal input reader. While `paused` is set (an external
 /// $EDITOR owns the terminal) the thread must not touch stdin at all.
 pub fn spawn_input_thread(tx: Sender<AppEvent>, paused: Arc<AtomicBool>) {
-    thread::spawn(move || loop {
-        if paused.load(Ordering::SeqCst) {
-            thread::sleep(Duration::from_millis(50));
-            continue;
-        }
-        // Poll with a timeout so a pause request takes effect promptly.
-        match event::poll(Duration::from_millis(100)) {
-            Ok(true) => {
-                if paused.load(Ordering::SeqCst) {
-                    continue;
-                }
-                let ev = match event::read() {
-                    Ok(ev) => ev,
-                    Err(_) => return,
-                };
-                let msg = match ev {
-                    Event::Key(k) => AppEvent::Key(k),
-                    Event::Resize(_, _) => AppEvent::Resize,
-                    _ => continue,
-                };
-                if tx.send(msg).is_err() {
-                    return;
-                }
+    thread::spawn(move || {
+        loop {
+            if paused.load(Ordering::SeqCst) {
+                thread::sleep(Duration::from_millis(50));
+                continue;
             }
-            Ok(false) => {}
-            Err(_) => return,
+            // Poll with a timeout so a pause request takes effect promptly.
+            match event::poll(Duration::from_millis(100)) {
+                Ok(true) => {
+                    if paused.load(Ordering::SeqCst) {
+                        continue;
+                    }
+                    let ev = match event::read() {
+                        Ok(ev) => ev,
+                        Err(_) => return,
+                    };
+                    let msg = match ev {
+                        Event::Key(k) => AppEvent::Key(k),
+                        Event::Resize(_, _) => AppEvent::Resize,
+                        _ => continue,
+                    };
+                    if tx.send(msg).is_err() {
+                        return;
+                    }
+                }
+                Ok(false) => {}
+                Err(_) => return,
+            }
         }
     });
 }

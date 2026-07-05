@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use std::rc::Rc;
 
 use ratatui::style::Color;
 use ratatui::text::Line;
@@ -51,8 +52,10 @@ pub struct Section {
     /// Stable identity across refreshes (hash of parent id + own key).
     pub id: SectionId,
     pub value: SectionValue,
-    pub heading: Line<'static>,
-    pub body: Vec<Line<'static>>,
+    /// Lines are `Rc`-shared with `FlatLine` so that flattening — which runs
+    /// on every refresh and fold toggle — never copies line contents.
+    pub heading: Rc<Line<'static>>,
+    pub body: Vec<Rc<Line<'static>>>,
     pub children: Vec<Section>,
     pub collapsed: bool,
     /// When set on the root, its children render as one tight list: no
@@ -73,7 +76,7 @@ impl Section {
         Self {
             id: 0,
             value: SectionValue::Root,
-            heading: Line::default(),
+            heading: Rc::default(),
             body: Vec::new(),
             children: Vec::new(),
             collapsed: false,
@@ -92,7 +95,7 @@ impl Section {
         Self {
             id: section_id(parent_id, key),
             value,
-            heading,
+            heading: Rc::new(heading),
             body: Vec::new(),
             children: Vec::new(),
             collapsed: false,
@@ -100,6 +103,11 @@ impl Section {
             body_fill: None,
             margin: None,
         }
+    }
+
+    /// Append a body line (wraps it in the `Rc` the tree stores).
+    pub fn push_body(&mut self, line: Line<'static>) {
+        self.body.push(Rc::new(line));
     }
 
     pub fn is_foldable(&self) -> bool {
@@ -164,7 +172,8 @@ pub struct FlatLine {
     pub is_heading: bool,
     /// Index into the owning section's `body` (None for headings/spacers).
     pub body_idx: Option<usize>,
-    pub line: Line<'static>,
+    /// Shared with the owning section — flattening copies pointers, not text.
+    pub line: Rc<Line<'static>>,
     /// Right-aligned trailer, rendered flush to the viewport's right edge
     /// (only ever set on a heading line — the log margin).
     pub margin: Option<Line<'static>>,
@@ -236,7 +245,7 @@ fn spacer(path: Vec<usize>, id: SectionId) -> FlatLine {
         section_id: id,
         is_heading: false,
         body_idx: None,
-        line: Line::default(),
+        line: Rc::default(),
         margin: None,
         fill_bg: None,
     }
@@ -249,10 +258,10 @@ mod tests {
     fn tree() -> Section {
         let mut root = Section::root();
         let mut a = Section::new(0, "a", SectionValue::Group(Group::Unstaged), "A".into());
-        a.body.push("a1".into());
+        a.push_body("a1".into());
         let mut b = Section::new(a.id, "b", SectionValue::Text, "B".into());
-        b.body.push("b1".into());
-        b.body.push("b2".into());
+        b.push_body("b1".into());
+        b.push_body("b2".into());
         a.children.push(b);
         root.children.push(a);
         root.children

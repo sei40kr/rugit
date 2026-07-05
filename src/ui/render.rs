@@ -77,7 +77,7 @@ fn draw_pane(f: &mut Frame, app: &mut App, area: Rect) {
         .map(|(i, fl)| {
             let mut content = match &fl.margin {
                 Some(m) => with_margin(&fl.line, m, area.width),
-                None => fl.line.clone(),
+                None => (*fl.line).clone(),
             };
             if let Some(bg) = fl.fill_bg {
                 content = fill_background(content, bg, area.width);

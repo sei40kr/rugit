@@ -331,7 +331,7 @@ mod tests {
                 name.to_string().into(),
             );
             for i in 0..*body_lines {
-                s.body.push(format!("{name}.{i}").into());
+                s.push_body(format!("{name}.{i}").into());
             }
             root.children.push(s);
         }

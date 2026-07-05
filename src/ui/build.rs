@@ -2,6 +2,8 @@
 //! kinds funnel through the same `Section` machinery in `section.rs`.
 //! Colors come exclusively from `Theme` so the scheme is configurable.
 
+use std::rc::Rc;
+
 use ratatui::style::{Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
@@ -22,7 +24,7 @@ fn group_heading(t: &Theme, text: String) -> Line<'static> {
 
 pub fn build_status(t: &Theme, s: &StatusSnapshot) -> Section {
     let mut root = Section::root();
-    root.body = header_lines(t, s);
+    root.body = header_lines(t, s).into_iter().map(Rc::new).collect();
 
     if !s.untracked.is_empty() {
         let mut g = Section::new(
@@ -145,8 +147,8 @@ pub fn build_status(t: &Theme, s: &StatusSnapshot) -> Section {
     }
 
     if root.children.is_empty() && root.body.len() <= 3 {
-        root.body.push(Line::default());
-        root.body.push(Line::from(Span::styled(
+        root.push_body(Line::default());
+        root.push_body(Line::from(Span::styled(
             "Nothing to see here — working tree clean.",
             Style::new().dim(),
         )));
@@ -216,7 +218,7 @@ pub fn file_section(t: &Theme, parent_id: u64, area: DiffArea, fd: &FileDiff) ->
         ]),
     );
     if fd.is_binary {
-        sec.body.push(Line::from(Span::styled(
+        sec.push_body(Line::from(Span::styled(
             "(binary file)".to_string(),
             Style::new().dim(),
         )));
@@ -236,7 +238,7 @@ pub fn file_section(t: &Theme, parent_id: u64, area: DiffArea, fd: &FileDiff) ->
             )),
         );
         for l in &hunk.lines {
-            h.body.push(diff_line(t, l));
+            h.push_body(diff_line(t, l));
         }
         sec.children.push(h);
     }
@@ -257,7 +259,10 @@ fn diff_line(t: &Theme, l: &str) -> Line<'static> {
 /// by the diff as read-only file sections.
 pub fn build_revision(t: &Theme, header: &str, files: &[FileDiff]) -> Section {
     let mut root = Section::root();
-    root.body = header.lines().map(|l| Line::from(l.to_string())).collect();
+    root.body = header
+        .lines()
+        .map(|l| Rc::new(Line::from(l.to_string())))
+        .collect();
     for fd in files {
         root.children
             .push(file_section(t, 0, DiffArea::Committed, fd));
@@ -276,12 +281,12 @@ pub fn build_log(t: &Theme, title: &str, entries: &[LogEntry]) -> Section {
     // ("Commits in HEAD"); the caller supplies the whole phrase as the title.
     // Rendered as a full-width bar (see `body_fill`) in the header colors.
     root.body_fill = Some(t.header_bg);
-    root.body.push(Line::from(Span::styled(
+    root.push_body(Line::from(Span::styled(
         title.to_string(),
         heading_style().fg(t.header_fg).bg(t.header_bg),
     )));
     if entries.is_empty() {
-        root.body.push(Line::from(Span::styled(
+        root.push_body(Line::from(Span::styled(
             "No commits.".to_string(),
             Style::new().dim(),
         )));
@@ -396,7 +401,7 @@ pub fn build_rebase_todo(t: &Theme, title: &str, entries: &[TodoEntry]) -> Secti
     let mut root = Section::root();
     root.compact = true;
     root.body_fill = Some(t.header_bg);
-    root.body.push(Line::from(Span::styled(
+    root.push_body(Line::from(Span::styled(
         title.to_string(),
         heading_style().fg(t.header_fg).bg(t.header_bg),
     )));
@@ -431,9 +436,7 @@ pub fn build_rebase_todo(t: &Theme, title: &str, entries: &[TodoEntry]) -> Secti
         "p pick  r reword  e edit  s squash  f fixup  d drop",
         "M-j/M-k move commit  RET show commit  C-c C-c rebase  C-c C-k abort",
     ] {
-        hints
-            .body
-            .push(Line::from(Span::styled(l.to_string(), Style::new().dim())));
+        hints.push_body(Line::from(Span::styled(l.to_string(), Style::new().dim())));
     }
     root.children.push(hints);
     root
@@ -443,7 +446,7 @@ pub fn build_rebase_todo(t: &Theme, title: &str, entries: &[TodoEntry]) -> Secti
 pub fn build_process_log(t: &Theme, entries: &[ProcessEntry]) -> Section {
     let mut root = Section::root();
     if entries.is_empty() {
-        root.body.push(Line::from(Span::styled(
+        root.push_body(Line::from(Span::styled(
             "No git commands run yet.".to_string(),
             Style::new().dim(),
         )));
@@ -465,8 +468,7 @@ pub fn build_process_log(t: &Theme, entries: &[ProcessEntry]) -> Section {
             ]),
         );
         for l in e.output.lines() {
-            sec.body
-                .push(Line::from(Span::styled(l.to_string(), Style::new().dim())));
+            sec.push_body(Line::from(Span::styled(l.to_string(), Style::new().dim())));
         }
         root.children.push(sec);
     }

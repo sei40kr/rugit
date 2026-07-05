@@ -183,7 +183,10 @@ fn prepared_todo_drives_interactive_rebase_via_sequence_editor() {
 
     let status = Command::new("git")
         .args(["rebase", "--interactive", "HEAD~3"])
-        .env("GIT_SEQUENCE_EDITOR", format!("cp '{}'", plan_path.display()))
+        .env(
+            "GIT_SEQUENCE_EDITOR",
+            format!("cp '{}'", plan_path.display()),
+        )
         .env("GIT_EDITOR", "true")
         .env("GIT_TERMINAL_PROMPT", "0")
         .current_dir(tmp.path())

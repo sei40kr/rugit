@@ -203,10 +203,8 @@ mod tests {
             e(TodoAction::Pick, "d", "squash! other work"),
         ];
         let out = autosquash(entries);
-        let plan: Vec<(&str, TodoAction)> = out
-            .iter()
-            .map(|x| (x.hash.as_str(), x.action))
-            .collect();
+        let plan: Vec<(&str, TodoAction)> =
+            out.iter().map(|x| (x.hash.as_str(), x.action)).collect();
         assert_eq!(
             plan,
             vec![

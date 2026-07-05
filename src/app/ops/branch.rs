@@ -66,8 +66,7 @@ impl App {
     /// cursor, like Magit's at-point defaults.
     pub(super) fn list_revs_at_point(&self) -> Vec<String> {
         let mut out = self.list_branches();
-        if let Some(SectionValue::Commit { hash }) =
-            self.panes.last().map(|p| p.value_at_cursor())
+        if let Some(SectionValue::Commit { hash }) = self.panes.last().map(|p| p.value_at_cursor())
         {
             out.retain(|b| *b != hash);
             out.insert(0, hash);

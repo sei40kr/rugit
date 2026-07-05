@@ -218,8 +218,7 @@ impl App {
             match result {
                 Ok(snapshot) => {
                     let root = build::build_status(&self.theme, &snapshot);
-                    if let Some(pane) = self.panes.iter_mut().find(|p| p.kind == PaneKind::Status)
-                    {
+                    if let Some(pane) = self.panes.iter_mut().find(|p| p.kind == PaneKind::Status) {
                         pane.replace_tree(root);
                         pane.unstaged = snapshot.unstaged.clone();
                         pane.staged = snapshot.staged.clone();

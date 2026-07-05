@@ -49,7 +49,12 @@ impl App {
             Some(InputState::picker("Merge", purpose, self.list_revs_at_point()).with_carry(args));
     }
 
-    pub(super) fn merge_submit(&mut self, purpose: InputPurpose, value: String, carry: Vec<String>) {
+    pub(super) fn merge_submit(
+        &mut self,
+        purpose: InputPurpose,
+        value: String,
+        carry: Vec<String>,
+    ) {
         // `carry` holds the flags collected in the transient.
         match purpose {
             InputPurpose::MergeAbsorbRev => {
@@ -133,9 +138,13 @@ impl App {
                 Err(e) => (String::new(), false, e.to_string()),
             };
             let (header, diff) = if oid.is_empty() {
-                (format!("Cannot preview merging {rev} into HEAD:\n{err}"), String::new())
+                (
+                    format!("Cannot preview merging {rev} into HEAD:\n{err}"),
+                    String::new(),
+                )
             } else {
-                let mut header = format!("Preview of merging {rev} into HEAD — nothing has been committed.");
+                let mut header =
+                    format!("Preview of merging {rev} into HEAD — nothing has been committed.");
                 if conflicted {
                     header.push_str("\nThis merge would have conflicts (markers shown below).");
                 }

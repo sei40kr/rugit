@@ -597,10 +597,7 @@ mod tests {
         // Dropped rows are struck through in the error color.
         let drop_span = &root.children[1].heading.spans[0];
         assert_eq!(drop_span.style.fg, Some(t.error));
-        assert!(drop_span
-            .style
-            .add_modifier
-            .contains(Modifier::CROSSED_OUT));
+        assert!(drop_span.style.add_modifier.contains(Modifier::CROSSED_OUT));
         // The trailing child is the dim key-hint block, not a commit.
         assert_eq!(root.children.last().unwrap().value, SectionValue::Text);
     }

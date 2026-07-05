@@ -137,12 +137,10 @@ impl App {
         flags.retain(|f| f != "--interactive");
         // Listing the span is a fast local read, like `list_branches`.
         let range = format!("{base}..HEAD");
-        let out = match self.git.run(&[
-            "log",
-            "--reverse",
-            "--format=%h\u{1f}%s",
-            &range,
-        ]) {
+        let out = match self
+            .git
+            .run(&["log", "--reverse", "--format=%h\u{1f}%s", &range])
+        {
             Ok(out) if out.ok() => out,
             Ok(out) => {
                 let first = out.stderr.lines().next().unwrap_or("").to_string();
@@ -190,7 +188,11 @@ impl App {
     /// instructions the editor cannot represent (exec, break, ...) fall back
     /// to $EDITOR, as does a non-interactive (rebase-apply) rebase.
     fn open_edit_todo(&mut self) {
-        let path = self.git.git_dir.join("rebase-merge").join("git-rebase-todo");
+        let path = self
+            .git
+            .git_dir
+            .join("rebase-merge")
+            .join("git-rebase-todo");
         let parsed = std::fs::read_to_string(path)
             .ok()
             .and_then(|text| todo::parse_todo(&text).ok());
@@ -280,7 +282,10 @@ impl App {
         let Some(state) = self.panes.last_mut().and_then(|p| p.todo.as_mut()) else {
             return;
         };
-        let Some(j) = i.checked_add_signed(delta).filter(|j| *j < state.entries.len()) else {
+        let Some(j) = i
+            .checked_add_signed(delta)
+            .filter(|j| *j < state.entries.len())
+        else {
             return;
         };
         state.entries.swap(i, j);

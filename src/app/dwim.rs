@@ -275,11 +275,18 @@ impl App {
         let tx = self.tx.clone();
         thread::spawn(move || {
             let header = git
-                .run(&["show", "--no-patch", "--format=medium", &rev])
+                .run(&["show", "--no-color", "--no-patch", "--format=medium", &rev])
                 .map(|o| o.stdout)
                 .unwrap_or_default();
             let diff = git
-                .run(&["show", "--format=", "--patch", "--no-ext-diff", &rev])
+                .run(&[
+                    "show",
+                    "--no-color",
+                    "--format=",
+                    "--patch",
+                    "--no-ext-diff",
+                    &rev,
+                ])
                 .map(|o| o.stdout)
                 .unwrap_or_default();
             let _ = tx.send(AppEvent::RevisionReady {

@@ -99,8 +99,8 @@ impl GitClient {
     pub fn read_snapshot(&self) -> Result<StatusSnapshot, GitError> {
         let (status, unstaged, staged, log, stashes) = std::thread::scope(|s| {
             let status = s.spawn(|| self.read(&["status", "--porcelain=v2", "--branch", "-z"]));
-            let unstaged = s.spawn(|| self.read(&["diff", "--no-ext-diff"]));
-            let staged = s.spawn(|| self.run(&["diff", "--no-ext-diff", "--cached"]));
+            let unstaged = s.spawn(|| self.read(&["diff", "--no-color", "--no-ext-diff"]));
+            let staged = s.spawn(|| self.run(&["diff", "--no-color", "--no-ext-diff", "--cached"]));
             let log = s.spawn(|| self.run(&["log", "-n", "10", "--format=%h\u{1f}%D\u{1f}%s"]));
             let stashes = s.spawn(|| self.run(&["stash", "list", "--format=%gd\u{1f}%s"]));
             (
@@ -120,7 +120,13 @@ impl GitClient {
         let staged = Arc::new(if staged.ok() {
             parse::parse_diff(&staged.stdout)
         } else {
-            let out = self.read(&["diff", "--no-ext-diff", "--cached", EMPTY_TREE])?;
+            let out = self.read(&[
+                "diff",
+                "--no-color",
+                "--no-ext-diff",
+                "--cached",
+                EMPTY_TREE,
+            ])?;
             parse::parse_diff(&out.stdout)
         });
 

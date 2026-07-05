@@ -40,6 +40,20 @@ pub enum TransientAction {
     MergeInto,
     /// Abort the in-progress merge (after a y/n confirm).
     MergeAbort,
+    /// Rebase the current branch onto its upstream.
+    RebaseUpstream,
+    /// Opens a picker over branches, then rebases onto the chosen one.
+    RebaseElsewhere,
+    /// Like `RebaseElsewhere`, but interactive: the todo list opens in $EDITOR.
+    RebaseInteractive,
+    /// Continue the in-progress rebase (may open $EDITOR for a message).
+    RebaseContinue,
+    /// Skip the commit that stopped the in-progress rebase.
+    RebaseSkip,
+    /// Reopen the todo list of the in-progress interactive rebase in $EDITOR.
+    RebaseEditTodo,
+    /// Abort the in-progress rebase (after a y/n confirm).
+    RebaseAbort,
     /// Opens a picker over local and remote branches.
     Checkout,
     /// Opens a minibuffer for the new branch name, then checks it out.
@@ -95,6 +109,8 @@ pub struct GroupDef {
 pub struct TransientDef {
     pub title: &'static str,
     pub groups: &'static [GroupDef],
+    /// Switch flags enabled when the menu opens (Magit's `:value`).
+    pub defaults: &'static [&'static str],
     /// Sets of mutually exclusive switches (Magit's `:incompatible`):
     /// enabling one clears the others in its set.
     pub incompatible: &'static [&'static [&'static str]],
@@ -102,6 +118,7 @@ pub struct TransientDef {
 
 pub static COMMIT: TransientDef = TransientDef {
     title: "Commit",
+    defaults: &[],
     incompatible: &[],
     groups: &[
         GroupDef {
@@ -154,6 +171,7 @@ pub static COMMIT: TransientDef = TransientDef {
 
 pub static PUSH: TransientDef = TransientDef {
     title: "Push",
+    defaults: &[],
     incompatible: &[],
     groups: &[
         GroupDef {
@@ -196,6 +214,7 @@ pub static PUSH: TransientDef = TransientDef {
 
 pub static BRANCH: TransientDef = TransientDef {
     title: "Branch",
+    defaults: &[],
     incompatible: &[],
     groups: &[GroupDef {
         title: "Actions",
@@ -223,6 +242,7 @@ pub static BRANCH: TransientDef = TransientDef {
 // the `--ff-only`/`--no-ff` incompatible pair.
 pub static MERGE: TransientDef = TransientDef {
     title: "Merge",
+    defaults: &[],
     incompatible: &[&["--ff-only", "--no-ff"]],
     groups: &[
         GroupDef {
@@ -298,6 +318,7 @@ pub static MERGE: TransientDef = TransientDef {
 /// only sensible actions are finishing or aborting the current one.
 pub static MERGE_IN_PROGRESS: TransientDef = TransientDef {
     title: "Merge (in progress)",
+    defaults: &[],
     incompatible: &[],
     groups: &[GroupDef {
         title: "Actions",
@@ -316,8 +337,114 @@ pub static MERGE_IN_PROGRESS: TransientDef = TransientDef {
     }],
 };
 
+// Arguments mirror `magit-rebase` (default levels), including `--autostash`
+// being on by default. `--interactive` is a real switch: enabling it makes
+// the onto-upstream/elsewhere actions open the todo editor.
+pub static REBASE: TransientDef = TransientDef {
+    title: "Rebase",
+    defaults: &["--autostash"],
+    incompatible: &[],
+    groups: &[
+        GroupDef {
+            title: "Arguments",
+            items: &[
+                Item::Switch {
+                    key: "-k",
+                    flag: "--keep-empty",
+                    desc: "Keep empty commits",
+                },
+                Item::Switch {
+                    key: "-d",
+                    flag: "--committer-date-is-author-date",
+                    desc: "Use author date as committer date",
+                },
+                Item::Switch {
+                    key: "-t",
+                    flag: "--ignore-date",
+                    desc: "Use current time as author date",
+                },
+                Item::Switch {
+                    key: "-a",
+                    flag: "--autosquash",
+                    desc: "Autosquash fixup and squash commits",
+                },
+                Item::Switch {
+                    key: "-A",
+                    flag: "--autostash",
+                    desc: "Autostash",
+                },
+                Item::Switch {
+                    key: "-i",
+                    flag: "--interactive",
+                    desc: "Interactive",
+                },
+                Item::Switch {
+                    key: "-h",
+                    flag: "--no-verify",
+                    desc: "Disable hooks",
+                },
+            ],
+        },
+        GroupDef {
+            title: "Actions",
+            items: &[
+                Item::Action {
+                    key: "u",
+                    desc: "Rebase onto upstream",
+                    action: TransientAction::RebaseUpstream,
+                },
+                Item::Action {
+                    key: "e",
+                    desc: "Rebase onto elsewhere",
+                    action: TransientAction::RebaseElsewhere,
+                },
+                Item::Action {
+                    key: "i",
+                    desc: "Rebase interactively",
+                    action: TransientAction::RebaseInteractive,
+                },
+            ],
+        },
+    ],
+};
+
+/// Shown instead of `REBASE` while a rebase is in progress (rebase-merge or
+/// rebase-apply exists), mirroring Magit: starting another rebase is
+/// impossible, so the only sensible actions manage the current one.
+pub static REBASE_IN_PROGRESS: TransientDef = TransientDef {
+    title: "Rebase (in progress)",
+    defaults: &[],
+    incompatible: &[],
+    groups: &[GroupDef {
+        title: "Actions",
+        items: &[
+            Item::Action {
+                key: "r",
+                desc: "Continue",
+                action: TransientAction::RebaseContinue,
+            },
+            Item::Action {
+                key: "s",
+                desc: "Skip this commit",
+                action: TransientAction::RebaseSkip,
+            },
+            Item::Action {
+                key: "e",
+                desc: "Edit the todo list",
+                action: TransientAction::RebaseEditTodo,
+            },
+            Item::Action {
+                key: "a",
+                desc: "Abort rebase",
+                action: TransientAction::RebaseAbort,
+            },
+        ],
+    }],
+};
+
 pub static PULL: TransientDef = TransientDef {
     title: "Pull",
+    defaults: &[],
     incompatible: &[],
     groups: &[
         GroupDef {
@@ -348,6 +475,7 @@ pub static PULL: TransientDef = TransientDef {
 
 pub static FETCH: TransientDef = TransientDef {
     title: "Fetch",
+    defaults: &[],
     incompatible: &[],
     groups: &[
         GroupDef {
@@ -378,6 +506,7 @@ pub static FETCH: TransientDef = TransientDef {
 
 pub static LOG: TransientDef = TransientDef {
     title: "Log",
+    defaults: &[],
     incompatible: &[],
     groups: &[
         GroupDef {
@@ -442,12 +571,14 @@ pub static LOG: TransientDef = TransientDef {
 
 /// Resolve a `Command::Transient(menu)` to its definition. A new menu adds
 /// one arm here and nothing in `App::dispatch`. Menus whose contents depend
-/// on repo state are swapped in `App::open_transient` (merge in progress).
+/// on repo state are swapped in `App::open_transient` (merge or rebase in
+/// progress).
 pub fn menu_def(menu: Menu) -> &'static TransientDef {
     match menu {
         Menu::Commit => &COMMIT,
         Menu::Branch => &BRANCH,
         Menu::Merge => &MERGE,
+        Menu::Rebase => &REBASE,
         Menu::Push => &PUSH,
         Menu::Pull => &PULL,
         Menu::Fetch => &FETCH,
@@ -488,7 +619,7 @@ impl TransientState {
     pub fn new(def: &'static TransientDef) -> Self {
         Self {
             def,
-            enabled: BTreeSet::new(),
+            enabled: def.defaults.iter().copied().collect(),
             values: BTreeMap::new(),
             pending: String::new(),
         }
@@ -716,6 +847,48 @@ mod tests {
         st.on_key(&key('n'));
         assert!(st.enabled.contains("--no-ff"));
         assert!(!st.enabled.contains("--ff-only"));
+    }
+
+    #[test]
+    fn rebase_menu_defaults_to_autostash_like_magit() {
+        let mut st = TransientState::new(&REBASE);
+        match st.on_key(&key('u')) {
+            TransientResult::Invoke(TransientAction::RebaseUpstream, args) => {
+                assert_eq!(args, vec!["--autostash"]);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rebase_action_collects_enabled_flags() {
+        let mut st = TransientState::new(&REBASE);
+        // A default switch toggles off like any other; others toggle on.
+        st.on_key(&key('-'));
+        st.on_key(&key('A'));
+        st.on_key(&key('-'));
+        st.on_key(&key('i'));
+        match st.on_key(&key('u')) {
+            TransientResult::Invoke(TransientAction::RebaseUpstream, args) => {
+                assert_eq!(args, vec!["--interactive"]);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn in_progress_rebase_menu_only_manages_the_current_rebase() {
+        let mut st = TransientState::new(&REBASE_IN_PROGRESS);
+        assert_eq!(
+            st.on_key(&key('r')),
+            TransientResult::Invoke(TransientAction::RebaseContinue, vec![])
+        );
+        assert_eq!(
+            st.on_key(&key('a')),
+            TransientResult::Invoke(TransientAction::RebaseAbort, vec![])
+        );
+        // Starting a new rebase is not offered while one is in progress.
+        assert_eq!(st.on_key(&key('u')), TransientResult::Unbound);
     }
 
     #[test]

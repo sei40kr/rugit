@@ -7,6 +7,7 @@ use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
 use crate::git::client::ProcessEntry;
+use crate::git::todo::{TodoAction, TodoEntry};
 use crate::git::types::{DiffArea, FileDiff, LogEntry, StatusSnapshot};
 use crate::theme::Theme;
 use crate::ui::section::{Group, Section, SectionValue};
@@ -383,6 +384,58 @@ fn ref_spans(t: &Theme, refs: &str) -> Vec<Span<'static>> {
     out
 }
 
+/// The rebase-todo editor buffer: one commit per line, `<action> <hash>
+/// <subject>`, oldest first (the order git applies them). Each row is a
+/// `Commit` section, so RET (visit) shows the commit and the cursor sticks
+/// to its commit across reorders. A dim key-hint block sits at the bottom,
+/// like the comment block git appends to the todo file.
+pub fn build_rebase_todo(t: &Theme, title: &str, entries: &[TodoEntry]) -> Section {
+    let mut root = Section::root();
+    root.compact = true;
+    root.body_fill = Some(t.header_bg);
+    root.body.push(Line::from(Span::styled(
+        title.to_string(),
+        heading_style().fg(t.header_fg).bg(t.header_bg),
+    )));
+    for e in entries {
+        let dropped = e.action == TodoAction::Drop;
+        let action_style = if dropped {
+            Style::new().fg(t.error).add_modifier(Modifier::CROSSED_OUT)
+        } else {
+            Style::new().fg(t.todo_action)
+        };
+        let rest_style = if dropped {
+            Style::new().dim().add_modifier(Modifier::CROSSED_OUT)
+        } else {
+            Style::new()
+        };
+        root.children.push(Section::new(
+            0,
+            &format!("commit:{}", e.hash),
+            SectionValue::Commit {
+                hash: e.hash.clone(),
+            },
+            Line::from(vec![
+                // Widest action word is "reword"/"squash" (6); pad to align.
+                Span::styled(format!("{:<7}", e.action.word()), action_style),
+                Span::styled(e.hash.clone(), rest_style.patch(Style::new().fg(t.hash))),
+                Span::styled(format!(" {}", e.subject), rest_style),
+            ]),
+        ));
+    }
+    let mut hints = Section::new(0, "hints", SectionValue::Text, Line::default());
+    for l in [
+        "p pick  r reword  e edit  s squash  f fixup  d drop",
+        "M-j/M-k move commit  RET show commit  C-c C-c rebase  C-c C-k abort",
+    ] {
+        hints
+            .body
+            .push(Line::from(Span::styled(l.to_string(), Style::new().dim())));
+    }
+    root.children.push(hints);
+    root
+}
+
 /// The `$` buffer: every git command run by the app, newest last.
 pub fn build_process_log(t: &Theme, entries: &[ProcessEntry]) -> Section {
     let mut root = Section::root();
@@ -510,6 +563,39 @@ mod tests {
         let texts: Vec<String> = flatten(&root).iter().map(|f| f.line.to_string()).collect();
         // Header immediately followed by the first commit — no spacer.
         assert_eq!(texts, vec!["Commits in HEAD", "a s1"]);
+    }
+
+    #[test]
+    fn rebase_todo_rows_are_commit_sections_with_action_words() {
+        let t = Theme::default();
+        let entries = vec![
+            TodoEntry {
+                action: TodoAction::Pick,
+                hash: "abc".into(),
+                subject: "one".into(),
+            },
+            TodoEntry {
+                action: TodoAction::Drop,
+                hash: "def".into(),
+                subject: "two".into(),
+            },
+        ];
+        let root = build_rebase_todo(&t, "Interactive rebase onto main", &entries);
+        assert_eq!(root.body[0].to_string(), "Interactive rebase onto main");
+        assert_eq!(root.children[0].heading.to_string(), "pick   abc one");
+        assert_eq!(
+            root.children[0].value,
+            SectionValue::Commit { hash: "abc".into() }
+        );
+        // Dropped rows are struck through in the error color.
+        let drop_span = &root.children[1].heading.spans[0];
+        assert_eq!(drop_span.style.fg, Some(t.error));
+        assert!(drop_span
+            .style
+            .add_modifier
+            .contains(Modifier::CROSSED_OUT));
+        // The trailing child is the dim key-hint block, not a commit.
+        assert_eq!(root.children.last().unwrap().value, SectionValue::Text);
     }
 
     #[test]

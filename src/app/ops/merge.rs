@@ -106,7 +106,7 @@ impl App {
         args.push(value.clone());
         let desc = format!("merge {value}");
         if purpose == InputPurpose::MergeEditRev {
-            self.editor_request = Some(EditorRequest { desc, args });
+            self.editor_request = Some(EditorRequest::new(desc, args));
         } else {
             self.run_git_bg(desc, args, None);
         }

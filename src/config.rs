@@ -10,6 +10,9 @@
 //! [keys.status]
 //! "s" = "stage"
 //!
+//! [keys.rebase-todo]
+//! "x" = "todo-drop"
+//!
 //! [colors]            # role names: see src/theme.rs
 //! diff-add  = "green"
 //! cursor-bg = "#3a3a3a"
@@ -39,6 +42,8 @@ pub struct KeysConfig {
     pub global: HashMap<String, String>,
     #[serde(default)]
     pub status: HashMap<String, String>,
+    #[serde(default, rename = "rebase-todo")]
+    pub rebase_todo: HashMap<String, String>,
 }
 
 pub fn config_path() -> Option<PathBuf> {
@@ -86,6 +91,10 @@ pub fn apply_keys(cfg: &Config, keymaps: &mut Keymaps, warnings: &mut Vec<String
     apply(
         &cfg.keys.status,
         keymaps.local.entry(PaneKind::Status).or_default(),
+    );
+    apply(
+        &cfg.keys.rebase_todo,
+        keymaps.local.entry(PaneKind::RebaseTodo).or_default(),
     );
 }
 

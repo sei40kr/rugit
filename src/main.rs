@@ -94,6 +94,7 @@ fn run_editor(
 
     let status = ProcessCommand::new("git")
         .args(&req.args)
+        .envs(req.envs.iter().cloned())
         .current_dir(&app.git.repo_root)
         .status()
         .map(|s| s.code().unwrap_or(-1))

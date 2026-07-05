@@ -2,9 +2,21 @@
 //! Navigation, scrolling and refresh-survival are shared by all buffer kinds.
 
 use crate::command::NavCmd;
+use crate::git::todo::TodoEntry;
 use crate::git::types::{DiffArea, FileDiff};
 use crate::keymap::PaneKind;
 use crate::ui::section::{flatten, FlatLine, Section, SectionId, SectionValue};
+
+/// Editing state of a rebase-todo buffer: the entries plus the launch
+/// context. `base` is the revision handed to `git rebase -i`; `None` means
+/// the buffer edits the todo of an already-running rebase (`--edit-todo`).
+#[derive(Debug, Clone)]
+pub struct RebaseTodoState {
+    pub entries: Vec<TodoEntry>,
+    /// Switches collected in the rebase transient (e.g. `--autostash`).
+    pub flags: Vec<String>,
+    pub base: Option<String>,
+}
 
 #[derive(Debug, Clone)]
 pub struct Pane {
@@ -23,6 +35,8 @@ pub struct Pane {
     /// For a `Log` pane: the revision args that produced it, so `g` can re-run
     /// the same log.
     pub log_args: Option<Vec<String>>,
+    /// For a `RebaseTodo` pane: the plan being edited.
+    pub todo: Option<RebaseTodoState>,
 }
 
 /// Where the cursor was, expressed in section identities so it can be
@@ -50,6 +64,7 @@ impl Pane {
             staged: Vec::new(),
             committed: Vec::new(),
             log_args: None,
+            todo: None,
         }
     }
 

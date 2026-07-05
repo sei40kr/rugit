@@ -10,18 +10,12 @@ impl App {
             TransientAction::Commit => {
                 let mut a = svec(&["commit"]);
                 a.append(&mut args);
-                self.editor_request = Some(EditorRequest {
-                    desc: "commit".into(),
-                    args: a,
-                });
+                self.editor_request = Some(EditorRequest::new("commit", a));
             }
             TransientAction::CommitAmend => {
                 let mut a = svec(&["commit", "--amend"]);
                 a.append(&mut args);
-                self.editor_request = Some(EditorRequest {
-                    desc: "amend".into(),
-                    args: a,
-                });
+                self.editor_request = Some(EditorRequest::new("amend", a));
             }
             TransientAction::CommitExtend => {
                 let mut a = svec(&["commit", "--amend", "--no-edit"]);

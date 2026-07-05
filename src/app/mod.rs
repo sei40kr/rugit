@@ -80,6 +80,19 @@ pub enum PendingAction {
 pub struct EditorRequest {
     pub desc: String,
     pub args: Vec<String>,
+    /// Extra environment for the git process (e.g. `GIT_SEQUENCE_EDITOR`
+    /// when launching a rebase whose todo the app already wrote).
+    pub envs: Vec<(String, String)>,
+}
+
+impl EditorRequest {
+    pub fn new(desc: impl Into<String>, args: Vec<String>) -> Self {
+        Self {
+            desc: desc.into(),
+            args,
+            envs: Vec::new(),
+        }
+    }
 }
 
 pub struct App {
@@ -211,6 +224,7 @@ impl App {
             Command::Visit => self.visit_at_point(),
             Command::Search => self.start_search(),
             Command::Transient(menu) => self.open_transient(menu),
+            Command::Todo(cmd) => self.todo_command(cmd),
             Command::Help => {
                 self.show_help = true;
                 self.help_scroll = 0;

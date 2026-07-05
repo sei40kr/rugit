@@ -32,6 +32,10 @@ pub enum InputPurpose {
     /// A branch to check out and merge the current branch into, deleting
     /// the current branch afterwards.
     MergeIntoRev,
+    /// A revision to rebase the current branch onto.
+    RebaseOntoRev,
+    /// A revision to rebase onto interactively (todo list in $EDITOR).
+    RebaseInteractiveRev,
     /// A branch/revision to log (from the log menu's "other").
     LogRev,
     /// A value for a transient value-argument (e.g. `--author=`); the flag is

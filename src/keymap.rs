@@ -255,6 +255,8 @@ pub enum PaneKind {
     Revision,
     Log,
     ProcessLog,
+    /// The interactive-rebase todo editor (Magit's git-rebase-mode).
+    RebaseTodo,
 }
 
 /// Layered keymaps: buffer-local shadows global.
@@ -296,8 +298,8 @@ impl Keymaps {
 
 /// The built-in bindings. User config is merged on top of these.
 pub fn default_keymaps() -> Keymaps {
-    use crate::command::Menu;
     use crate::command::NavCmd::*;
+    use crate::command::{Menu, TodoCmd};
     use Command::*;
     let mut global = Keymap::default();
     for (spec, cmd) in [
@@ -323,6 +325,7 @@ pub fn default_keymaps() -> Keymaps {
         ("c", Transient(Menu::Commit)),
         ("b", Transient(Menu::Branch)),
         ("m", Transient(Menu::Merge)),
+        ("r", Transient(Menu::Rebase)),
         ("P", Transient(Menu::Push)),
         ("F", Transient(Menu::Pull)),
         ("f", Transient(Menu::Fetch)),
@@ -344,8 +347,28 @@ pub fn default_keymaps() -> Keymaps {
         status.bind(spec, cmd);
     }
 
+    // git-rebase-mode-style keys, adapted to vim-ish movement: j/k stay
+    // navigation, so drop is on "d" (not Magit's "k") and commits move with
+    // M-j/M-k.
+    let mut todo = Keymap::default();
+    for (spec, cmd) in [
+        ("p", Todo(TodoCmd::Pick)),
+        ("r", Todo(TodoCmd::Reword)),
+        ("e", Todo(TodoCmd::Edit)),
+        ("s", Todo(TodoCmd::Squash)),
+        ("f", Todo(TodoCmd::Fixup)),
+        ("d", Todo(TodoCmd::Drop)),
+        ("M-k", Todo(TodoCmd::MoveUp)),
+        ("M-j", Todo(TodoCmd::MoveDown)),
+        ("C-c C-c", Todo(TodoCmd::Confirm)),
+        ("C-c C-k", Todo(TodoCmd::Abort)),
+    ] {
+        todo.bind(spec, cmd);
+    }
+
     let mut local = HashMap::new();
     local.insert(PaneKind::Status, status);
+    local.insert(PaneKind::RebaseTodo, todo);
     Keymaps { global, local }
 }
 
@@ -402,6 +425,33 @@ mod tests {
             Lookup::Command(Command::Stage)
         );
         assert_eq!(kms.lookup(PaneKind::Revision, &s), Lookup::Unbound);
+    }
+
+    #[test]
+    fn rebase_todo_keys_shadow_global_only_in_that_buffer() {
+        use crate::command::TodoCmd;
+        let kms = default_keymaps();
+        let d = parse_keys("d").unwrap();
+        assert_eq!(
+            kms.lookup(PaneKind::RebaseTodo, &d),
+            Lookup::Command(Command::Todo(TodoCmd::Drop))
+        );
+        assert_eq!(kms.lookup(PaneKind::Status, &d), Lookup::Unbound);
+        // The two-key confirm sequence resolves through the trie.
+        let confirm = parse_keys("C-c C-c").unwrap();
+        assert_eq!(
+            kms.lookup(PaneKind::RebaseTodo, &confirm),
+            Lookup::Command(Command::Todo(TodoCmd::Confirm))
+        );
+        // j/k stay navigation; commits move with M-j/M-k.
+        assert_eq!(
+            kms.lookup(PaneKind::RebaseTodo, &parse_keys("k").unwrap()),
+            Lookup::Command(Command::Nav(crate::command::NavCmd::MoveUp))
+        );
+        assert_eq!(
+            kms.lookup(PaneKind::RebaseTodo, &parse_keys("M-k").unwrap()),
+            Lookup::Command(Command::Todo(TodoCmd::MoveUp))
+        );
     }
 
     #[test]

@@ -52,6 +52,7 @@ theme! {
     hash:            Color::Yellow   => "hash",              // commit / stash ids
     log_author:      Color::Blue     => "log-author",        // log margin author
     log_date:        Color::Gray     => "log-date",          // log margin date
+    todo_action:     Color::Magenta  => "todo-action",       // rebase todo verbs
     // Diffs
     hunk_header:     Color::Cyan     => "hunk-header",
     diff_add:        Color::Green    => "diff-add",

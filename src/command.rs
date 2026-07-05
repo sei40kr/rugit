@@ -15,8 +15,27 @@ pub enum Command {
     Visit,
     Search,
     Transient(Menu),
+    /// Rebase-todo editing (only bound in the rebase-todo buffer).
+    Todo(TodoCmd),
     Help,
     ProcessLog,
+}
+
+/// Rebase-todo buffer commands. Grouped like `NavCmd` so `dispatch`
+/// forwards them wholesale to the todo editor instead of growing one arm
+/// per action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TodoCmd {
+    Pick,
+    Reword,
+    Edit,
+    Squash,
+    Fixup,
+    Drop,
+    MoveUp,
+    MoveDown,
+    Confirm,
+    Abort,
 }
 
 /// Pure cursor motions. Grouped so `dispatch` forwards them wholesale to
@@ -41,6 +60,7 @@ pub enum Menu {
     Commit,
     Branch,
     Merge,
+    Rebase,
     Push,
     Pull,
     Fetch,
@@ -140,6 +160,11 @@ pub const COMMANDS: &[CommandInfo] = &[
         "merge",
         "Open the merge menu",
     ),
+    ci(
+        Command::Transient(Menu::Rebase),
+        "rebase",
+        "Open the rebase menu",
+    ),
     ci(Command::Transient(Menu::Push), "push", "Open the push menu"),
     ci(Command::Transient(Menu::Pull), "pull", "Open the pull menu"),
     ci(
@@ -148,6 +173,56 @@ pub const COMMANDS: &[CommandInfo] = &[
         "Open the fetch menu",
     ),
     ci(Command::Transient(Menu::Log), "log", "Open the log menu"),
+    ci(
+        Command::Todo(TodoCmd::Pick),
+        "todo-pick",
+        "Rebase todo: use this commit",
+    ),
+    ci(
+        Command::Todo(TodoCmd::Reword),
+        "todo-reword",
+        "Rebase todo: use commit, edit its message",
+    ),
+    ci(
+        Command::Todo(TodoCmd::Edit),
+        "todo-edit",
+        "Rebase todo: use commit, stop for amending",
+    ),
+    ci(
+        Command::Todo(TodoCmd::Squash),
+        "todo-squash",
+        "Rebase todo: meld into previous commit",
+    ),
+    ci(
+        Command::Todo(TodoCmd::Fixup),
+        "todo-fixup",
+        "Rebase todo: meld into previous, discard message",
+    ),
+    ci(
+        Command::Todo(TodoCmd::Drop),
+        "todo-drop",
+        "Rebase todo: remove this commit",
+    ),
+    ci(
+        Command::Todo(TodoCmd::MoveUp),
+        "todo-move-up",
+        "Rebase todo: move commit up",
+    ),
+    ci(
+        Command::Todo(TodoCmd::MoveDown),
+        "todo-move-down",
+        "Rebase todo: move commit down",
+    ),
+    ci(
+        Command::Todo(TodoCmd::Confirm),
+        "todo-confirm",
+        "Rebase todo: confirm and run the rebase",
+    ),
+    ci(
+        Command::Todo(TodoCmd::Abort),
+        "todo-abort",
+        "Rebase todo: close without rebasing",
+    ),
     ci(Command::Help, "help", "Show key bindings"),
     ci(
         Command::ProcessLog,

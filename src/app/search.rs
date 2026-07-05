@@ -32,13 +32,14 @@ impl App {
         let Some(pane) = self.panes.last_mut() else {
             return;
         };
-        let matches = pane.find_matches(&query);
-        pane.cursor = matches
+        let matches = pane.matches_cached(&query);
+        let target = matches
             .iter()
             .copied()
             .find(|&i| i >= origin)
             .or(matches.first().copied())
             .unwrap_or(origin);
+        pane.cursor = target;
     }
 
     /// n/p while a search is active: jump to the next/previous match,
@@ -50,12 +51,12 @@ impl App {
         let Some(pane) = self.panes.last_mut() else {
             return;
         };
-        let matches = pane.find_matches(&query);
+        let cur = pane.cursor;
+        let matches = pane.matches_cached(&query);
         if matches.is_empty() {
             self.message = Some(format!("no matches for \"{query}\""));
             return;
         }
-        let cur = pane.cursor;
         let (next, wrapped) = if dir > 0 {
             match matches.iter().copied().find(|&i| i > cur) {
                 Some(i) => (i, false),
@@ -81,8 +82,8 @@ impl App {
     pub(super) fn search_submit(&mut self, value: String) {
         if value.is_empty() {
             self.search.query = None;
-        } else if let Some(pane) = self.panes.last() {
-            let n = pane.find_matches(&value).len();
+        } else if let Some(pane) = self.panes.last_mut() {
+            let n = pane.matches_cached(&value).len();
             self.message = Some(format!("{n} match(es) — n/p to navigate, ESC to clear"));
         }
     }

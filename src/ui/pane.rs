@@ -37,6 +37,9 @@ pub struct Pane {
     pub log_args: Option<Vec<String>>,
     /// For a `RebaseTodo` pane: the plan being edited.
     pub todo: Option<RebaseTodoState>,
+    /// Memoized `find_matches` result for the query; dropped whenever `flat`
+    /// is rebuilt.
+    search_cache: Option<(String, Vec<usize>)>,
 }
 
 /// Where the cursor was, expressed in section identities so it can be
@@ -65,6 +68,7 @@ impl Pane {
             committed: Vec::new(),
             log_args: None,
             todo: None,
+            search_cache: None,
         }
     }
 
@@ -178,6 +182,7 @@ impl Pane {
         sec.collapsed = !sec.collapsed;
         let id = sec.id;
         self.flat = flatten(&self.root);
+        self.search_cache = None;
         // Keep the cursor on the toggled section's heading.
         if let Some(i) = self
             .flat
@@ -219,6 +224,17 @@ impl Pane {
             .collect()
     }
 
+    /// `find_matches`, memoized on the query. The status bar asks for the
+    /// match count on every redraw and incremental search re-runs on every
+    /// keystroke; neither may rescan a large buffer when nothing changed.
+    pub fn matches_cached(&mut self, query: &str) -> &[usize] {
+        let stale = self.search_cache.as_ref().is_none_or(|(q, _)| q != query);
+        if stale {
+            self.search_cache = Some((query.to_string(), self.find_matches(query)));
+        }
+        &self.search_cache.as_ref().unwrap().1
+    }
+
     // ---- viewport --------------------------------------------------------
 
     /// Clamp the viewport so the cursor stays visible with `scrolloff` margin.
@@ -247,6 +263,7 @@ impl Pane {
         root.inherit_collapse(&self.root);
         self.root = root;
         self.flat = flatten(&self.root);
+        self.search_cache = None;
         self.restore_cursor(memo);
     }
 

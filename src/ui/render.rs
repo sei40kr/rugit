@@ -259,7 +259,22 @@ fn highlight(line: &Line<'static>, hl: Style) -> Line<'static> {
     Line::from(spans)
 }
 
-fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
+fn draw_status_bar(f: &mut Frame, app: &mut App, area: Rect) {
+    // Computed first: the match count is the one part that needs `&mut`
+    // (it is memoized on the pane rather than rescanning the buffer).
+    let right = if !app.pending.is_empty() {
+        format!("{} ", format_keys(&app.pending))
+    } else if let Some(query) = app.search.query.clone() {
+        let n = app
+            .panes
+            .last_mut()
+            .map(|p| p.matches_cached(&query).len())
+            .unwrap_or(0);
+        format!("/{query} ({n}) ")
+    } else {
+        String::new()
+    };
+
     let t = &app.theme;
     let base = Style::new().bg(t.bar_bg).fg(t.bar_fg);
 
@@ -289,18 +304,6 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
         left.push(Span::styled(format!("  {msg}"), Style::new().fg(t.message)));
     }
 
-    let right = if !app.pending.is_empty() {
-        format!("{} ", format_keys(&app.pending))
-    } else if let Some(query) = &app.search.query {
-        let n = app
-            .panes
-            .last()
-            .map(|p| p.find_matches(query).len())
-            .unwrap_or(0);
-        format!("/{query} ({n}) ")
-    } else {
-        String::new()
-    };
     let left_width = area.width.saturating_sub(right.len() as u16);
     f.render_widget(
         Paragraph::new(Line::from(left)).style(base),

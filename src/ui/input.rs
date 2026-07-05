@@ -225,12 +225,15 @@ impl InputState {
             for (i, (cand, indices)) in matches.iter().enumerate().skip(start).take(max_candidates)
             {
                 let base = if i == selected {
-                    Style::new().bg(t.cursor_bg).add_modifier(Modifier::BOLD)
+                    Style::new()
+                        .bg(t.picker_selected_bg)
+                        .fg(t.picker_selected_fg)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::new()
                 };
                 let marker = if i == selected { "▸ " } else { "  " };
-                let mut spans = vec![Span::styled(marker.to_string(), base)];
+                let mut spans = vec![Span::styled(marker.to_string(), base.fg(t.picker_marker))];
                 spans.extend(highlight_spans(cand, indices, base, t.picker_match));
                 out.push(Line::from(spans));
             }
@@ -250,7 +253,7 @@ impl InputState {
             .unwrap_or_else(|| " ".to_string());
         let after: String = chars[(self.cursor + 1).min(chars.len())..].iter().collect();
         out.push(Line::from(vec![
-            Span::styled("> ".to_string(), Style::new().fg(t.key).bold()),
+            Span::styled("> ".to_string(), Style::new().fg(t.input_prompt).bold()),
             Span::raw(before),
             Span::styled(at, Style::new().add_modifier(Modifier::REVERSED)),
             Span::raw(after),

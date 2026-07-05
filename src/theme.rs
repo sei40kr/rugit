@@ -68,7 +68,11 @@ theme! {
     success:         Color::Green    => "success",
     // Menus (transient / which-key / help)
     key:             Color::Yellow   => "key",
+    input_prompt:    Color::Yellow   => "input-prompt",       // minibuffer "> "
     picker_match:    Color::Cyan     => "picker-match",       // fuzzy-matched chars
+    picker_marker:   Color::Yellow   => "picker-marker",      // "▸" on the selection
+    picker_selected_bg: Color::DarkGray => "picker-selected-bg",
+    picker_selected_fg: Color::Reset    => "picker-selected-fg",
     menu_title:      Color::Magenta  => "menu-title",
     command:         Color::Cyan     => "command",           // command names in help
     help_border:     Color::Cyan     => "help-border",

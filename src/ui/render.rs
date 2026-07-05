@@ -62,7 +62,7 @@ fn draw_pane(f: &mut Frame, app: &mut App, area: Rect) {
     let search_style = Style::new()
         .bg(app.theme.search_match)
         .add_modifier(Modifier::BOLD);
-    let query = app.search.clone();
+    let query = app.search.query.clone();
     let Some(pane) = app.panes.last_mut() else {
         return;
     };
@@ -288,7 +288,7 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
 
     let right = if !app.pending.is_empty() {
         format!("{} ", format_keys(&app.pending))
-    } else if let Some(query) = &app.search {
+    } else if let Some(query) = &app.search.query {
         let n = app
             .panes
             .last()

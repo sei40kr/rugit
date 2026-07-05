@@ -100,7 +100,14 @@ enum AppEvent {
 src/
 ├ main.rs        terminal setup/teardown, panic hook (restores raw mode),
 │                event loop, $EDITOR handoff
-├ app.rs         App state, update(), DWIM dispatch, git worker spawning
+├ app/           App state + the update half of the loop, split by concern
+│  ├ mod.rs      App struct, AppEvent, update(), command dispatch table
+│  ├ keys.rs     key routing (confirm > input > help > transient > keymap)
+│  ├ dwim.rs     stage/unstage/discard/visit on the section at point
+│  ├ search.rs   buffer-search state, incremental preview, n/p motion
+│  ├ workers.rs  worker-thread git calls, refresh generations, process log
+│  └ ops/        one module per transient menu (commit / branch / remote /
+│                log); a new menu = a new file + one routing arm in ops/mod.rs
 ├ event.rs       input thread + .git watcher
 ├ command.rs     Command enum + name/description registry
 ├ keymap.rs      key-sequence trie, key-notation parser, layering

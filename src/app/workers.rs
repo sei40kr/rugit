@@ -44,6 +44,45 @@ impl App {
         });
     }
 
+    /// Run several git commands in sequence on a worker thread, stopping at
+    /// the first failure. They land in the process log as one entry (the
+    /// commands joined with `&&`) — for compound operations like absorb
+    /// (merge, then delete the branch).
+    pub(super) fn run_git_seq_bg(&mut self, desc: String, cmds: Vec<Vec<String>>) {
+        self.busy = Some(desc.clone());
+        let git = self.git.clone();
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let mut status = 0;
+            let mut output = String::new();
+            let mut ran = Vec::new();
+            for args in &cmds {
+                ran.push(display_cmd(args));
+                let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+                match git.run(&arg_refs) {
+                    Ok(out) => {
+                        output.push_str(&out.stdout);
+                        output.push_str(&out.stderr);
+                        status = out.status;
+                    }
+                    Err(e) => {
+                        output.push_str(&e.to_string());
+                        status = -1;
+                    }
+                }
+                if status != 0 {
+                    break;
+                }
+            }
+            let entry = ProcessEntry {
+                cmd: ran.join(" && "),
+                status,
+                output,
+            };
+            let _ = tx.send(AppEvent::GitDone { desc, entry });
+        });
+    }
+
     /// Refresh whatever the active buffer shows: re-run the log for a log
     /// pane, otherwise re-read the status snapshot.
     pub(super) fn refresh_current(&mut self) {

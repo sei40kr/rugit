@@ -424,7 +424,7 @@ Incremental, isearch-style. `/` opens a minibuffer (`InputPurpose::Search`).
 - Graph rendering in the log buffer (`--graph`), and inline diff expansion of
   a commit under point
 - Region selection for multi-line staging; discarding directly from staged
-- Transients for rebase / stash / merge; rename/delete in the branch
+- Transients for rebase / stash; rename/delete in the branch
   transient
 - `Arg` transient items and persisted switch defaults
 - Workspace split (`rugit-core` / `rugit-tui`); gix for the read side

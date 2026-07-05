@@ -40,6 +40,7 @@ pub enum NavCmd {
 pub enum Menu {
     Commit,
     Branch,
+    Merge,
     Push,
     Pull,
     Fetch,
@@ -133,6 +134,11 @@ pub const COMMANDS: &[CommandInfo] = &[
         Command::Transient(Menu::Branch),
         "branch",
         "Open the branch menu",
+    ),
+    ci(
+        Command::Transient(Menu::Merge),
+        "merge",
+        "Open the merge menu",
     ),
     ci(Command::Transient(Menu::Push), "push", "Open the push menu"),
     ci(Command::Transient(Menu::Pull), "pull", "Open the pull menu"),

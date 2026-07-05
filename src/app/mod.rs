@@ -25,7 +25,7 @@ use crate::keymap::{KeyPress, Keymaps, PaneKind};
 use crate::theme::Theme;
 use crate::ui::input::InputState;
 use crate::ui::pane::Pane;
-use crate::ui::transient::{menu_def, TransientState};
+use crate::ui::transient::TransientState;
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)] // events are few and short-lived
@@ -210,7 +210,7 @@ impl App {
             Command::Discard => self.discard_at_point(),
             Command::Visit => self.visit_at_point(),
             Command::Search => self.start_search(),
-            Command::Transient(menu) => self.transient = Some(TransientState::new(menu_def(menu))),
+            Command::Transient(menu) => self.open_transient(menu),
             Command::Help => {
                 self.show_help = true;
                 self.help_scroll = 0;

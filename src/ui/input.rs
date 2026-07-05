@@ -17,6 +17,21 @@ pub enum InputPurpose {
     CheckoutRev,
     CreateCheckoutBranch,
     CreateBranch,
+    /// A revision to merge headlessly (`--no-edit`).
+    MergeRev,
+    /// A revision to merge, editing the message in $EDITOR.
+    MergeEditRev,
+    /// A revision to merge with `--no-commit`, leaving the merge pending.
+    MergeNoCommitRev,
+    /// A revision to squash-merge onto the worktree/index.
+    MergeSquashRev,
+    /// A branch to merge and then delete (absorb).
+    MergeAbsorbRev,
+    /// A revision whose merge into HEAD is previewed, committing nothing.
+    MergePreviewRev,
+    /// A branch to check out and merge the current branch into, deleting
+    /// the current branch afterwards.
+    MergeIntoRev,
     /// A branch/revision to log (from the log menu's "other").
     LogRev,
     /// A value for a transient value-argument (e.g. `--author=`); the flag is

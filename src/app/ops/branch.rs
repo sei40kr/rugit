@@ -3,6 +3,7 @@
 
 use crate::app::{svec, App};
 use crate::ui::input::{InputPurpose, InputState};
+use crate::ui::section::SectionValue;
 use crate::ui::transient::TransientAction;
 
 impl App {
@@ -58,6 +59,20 @@ impl App {
             }
             _ => unreachable!("not a branch input"),
         }
+    }
+
+    /// `list_branches`, but with the commit at point (if any) as the first
+    /// candidate — merge/rebase pickers default to the thing under the
+    /// cursor, like Magit's at-point defaults.
+    pub(super) fn list_revs_at_point(&self) -> Vec<String> {
+        let mut out = self.list_branches();
+        if let Some(SectionValue::Commit { hash }) =
+            self.panes.last().map(|p| p.value_at_cursor())
+        {
+            out.retain(|b| *b != hash);
+            out.insert(0, hash);
+        }
+        out
     }
 
     /// Local and remote-tracking branch names for the checkout picker.

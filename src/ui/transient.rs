@@ -23,6 +23,23 @@ pub enum TransientAction {
     Pull,
     Fetch,
     FetchAll,
+    /// Opens a picker over branches, then merges headlessly (`--no-edit`).
+    Merge,
+    /// Like `Merge`, but hands the merge message to $EDITOR.
+    MergeEdit,
+    /// Merge without committing, so the result can be inspected first.
+    MergeNoCommit,
+    /// Squash the merged changes onto the worktree/index (no merge commit).
+    MergeSquash,
+    /// Merge a branch, then delete it (magit-merge-absorb).
+    MergeAbsorb,
+    /// Show what merging a revision would change, committing nothing.
+    MergePreview,
+    /// Check out another branch, merge the current one into it, then
+    /// delete the current one (magit-merge-into).
+    MergeInto,
+    /// Abort the in-progress merge (after a y/n confirm).
+    MergeAbort,
     /// Opens a picker over local and remote branches.
     Checkout,
     /// Opens a minibuffer for the new branch name, then checks it out.
@@ -78,10 +95,14 @@ pub struct GroupDef {
 pub struct TransientDef {
     pub title: &'static str,
     pub groups: &'static [GroupDef],
+    /// Sets of mutually exclusive switches (Magit's `:incompatible`):
+    /// enabling one clears the others in its set.
+    pub incompatible: &'static [&'static [&'static str]],
 }
 
 pub static COMMIT: TransientDef = TransientDef {
     title: "Commit",
+    incompatible: &[],
     groups: &[
         GroupDef {
             title: "Arguments",
@@ -133,6 +154,7 @@ pub static COMMIT: TransientDef = TransientDef {
 
 pub static PUSH: TransientDef = TransientDef {
     title: "Push",
+    incompatible: &[],
     groups: &[
         GroupDef {
             title: "Arguments",
@@ -174,6 +196,7 @@ pub static PUSH: TransientDef = TransientDef {
 
 pub static BRANCH: TransientDef = TransientDef {
     title: "Branch",
+    incompatible: &[],
     groups: &[GroupDef {
         title: "Actions",
         items: &[
@@ -196,8 +219,106 @@ pub static BRANCH: TransientDef = TransientDef {
     }],
 };
 
+// Arguments and actions mirror `magit-merge` (default levels), including
+// the `--ff-only`/`--no-ff` incompatible pair.
+pub static MERGE: TransientDef = TransientDef {
+    title: "Merge",
+    incompatible: &[&["--ff-only", "--no-ff"]],
+    groups: &[
+        GroupDef {
+            title: "Arguments",
+            items: &[
+                Item::Switch {
+                    key: "-f",
+                    flag: "--ff-only",
+                    desc: "Fast-forward only",
+                },
+                Item::Switch {
+                    key: "-n",
+                    flag: "--no-ff",
+                    desc: "No fast-forward",
+                },
+                Item::Arg {
+                    key: "-A",
+                    flag: "-Xdiff-algorithm=",
+                    desc: "Diff algorithm",
+                },
+                Item::Arg {
+                    key: "-S",
+                    flag: "--gpg-sign=",
+                    desc: "Sign using gpg",
+                },
+            ],
+        },
+        GroupDef {
+            title: "Actions",
+            items: &[
+                Item::Action {
+                    key: "m",
+                    desc: "Merge",
+                    action: TransientAction::Merge,
+                },
+                Item::Action {
+                    key: "e",
+                    desc: "Merge and edit message",
+                    action: TransientAction::MergeEdit,
+                },
+                Item::Action {
+                    key: "n",
+                    desc: "Merge but don't commit",
+                    action: TransientAction::MergeNoCommit,
+                },
+                Item::Action {
+                    key: "a",
+                    desc: "Absorb",
+                    action: TransientAction::MergeAbsorb,
+                },
+                Item::Action {
+                    key: "p",
+                    desc: "Preview merge",
+                    action: TransientAction::MergePreview,
+                },
+                Item::Action {
+                    key: "s",
+                    desc: "Squash merge",
+                    action: TransientAction::MergeSquash,
+                },
+                Item::Action {
+                    key: "i",
+                    desc: "Merge into",
+                    action: TransientAction::MergeInto,
+                },
+            ],
+        },
+    ],
+};
+
+/// Shown instead of `MERGE` while a merge is in progress (MERGE_HEAD
+/// exists), mirroring Magit: starting another merge is impossible, so the
+/// only sensible actions are finishing or aborting the current one.
+pub static MERGE_IN_PROGRESS: TransientDef = TransientDef {
+    title: "Merge (in progress)",
+    incompatible: &[],
+    groups: &[GroupDef {
+        title: "Actions",
+        items: &[
+            Item::Action {
+                key: "m",
+                desc: "Commit merge",
+                action: TransientAction::Commit,
+            },
+            Item::Action {
+                key: "a",
+                desc: "Abort merge",
+                action: TransientAction::MergeAbort,
+            },
+        ],
+    }],
+};
+
 pub static PULL: TransientDef = TransientDef {
     title: "Pull",
+    incompatible: &[],
     groups: &[
         GroupDef {
             title: "Arguments",
@@ -227,6 +348,7 @@ pub static PULL: TransientDef = TransientDef {
 
 pub static FETCH: TransientDef = TransientDef {
     title: "Fetch",
+    incompatible: &[],
     groups: &[
         GroupDef {
             title: "Arguments",
@@ -256,6 +378,7 @@ pub static FETCH: TransientDef = TransientDef {
 
 pub static LOG: TransientDef = TransientDef {
     title: "Log",
+    incompatible: &[],
     groups: &[
         GroupDef {
             title: "Arguments",
@@ -318,11 +441,13 @@ pub static LOG: TransientDef = TransientDef {
 };
 
 /// Resolve a `Command::Transient(menu)` to its definition. A new menu adds
-/// one arm here and nothing in `App::dispatch`.
+/// one arm here and nothing in `App::dispatch`. Menus whose contents depend
+/// on repo state are swapped in `App::open_transient` (merge in progress).
 pub fn menu_def(menu: Menu) -> &'static TransientDef {
     match menu {
         Menu::Commit => &COMMIT,
         Menu::Branch => &BRANCH,
+        Menu::Merge => &MERGE,
         Menu::Push => &PUSH,
         Menu::Pull => &PULL,
         Menu::Fetch => &FETCH,
@@ -409,6 +534,15 @@ impl TransientState {
                 Item::Switch { flag, .. } => {
                     if !self.enabled.remove(flag) {
                         self.enabled.insert(flag);
+                        // Enabling a switch clears the rest of its
+                        // incompatible set.
+                        for set in self.def.incompatible {
+                            if set.contains(&flag) {
+                                for other in set.iter().filter(|o| **o != flag) {
+                                    self.enabled.remove(other);
+                                }
+                            }
+                        }
                     }
                     TransientResult::Consumed
                 }
@@ -538,6 +672,50 @@ mod tests {
         assert_eq!(st.args(), vec!["--author=ada"]);
         st.set_value("--author=", String::new());
         assert!(st.args().is_empty());
+    }
+
+    #[test]
+    fn switch_and_action_sharing_a_letter_stay_distinct() {
+        // MERGE has both the "-n" switch and the "n" action; the pending
+        // prefix must keep the two-key sequence separate from the action.
+        let mut st = TransientState::new(&MERGE);
+        st.on_key(&key('-'));
+        st.on_key(&key('n'));
+        assert!(st.enabled.contains("--no-ff"));
+        match st.on_key(&key('n')) {
+            TransientResult::Invoke(TransientAction::MergeNoCommit, args) => {
+                assert_eq!(args, vec!["--no-ff"]);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn in_progress_merge_menu_only_finishes_or_aborts() {
+        let mut st = TransientState::new(&MERGE_IN_PROGRESS);
+        assert_eq!(
+            st.on_key(&key('m')),
+            TransientResult::Invoke(TransientAction::Commit, vec![])
+        );
+        assert_eq!(
+            st.on_key(&key('a')),
+            TransientResult::Invoke(TransientAction::MergeAbort, vec![])
+        );
+        // Actions from the normal merge menu are gone.
+        assert_eq!(st.on_key(&key('s')), TransientResult::Unbound);
+    }
+
+    #[test]
+    fn ff_only_and_no_ff_are_mutually_exclusive_like_magit() {
+        let mut st = TransientState::new(&MERGE);
+        st.on_key(&key('-'));
+        st.on_key(&key('f'));
+        assert!(st.enabled.contains("--ff-only"));
+        // Enabling the other side of the pair clears the first.
+        st.on_key(&key('-'));
+        st.on_key(&key('n'));
+        assert!(st.enabled.contains("--no-ff"));
+        assert!(!st.enabled.contains("--ff-only"));
     }
 
     #[test]

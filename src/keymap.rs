@@ -322,6 +322,7 @@ pub fn default_keymaps() -> Keymaps {
         ("/", Search),
         ("c", Transient(Menu::Commit)),
         ("b", Transient(Menu::Branch)),
+        ("m", Transient(Menu::Merge)),
         ("P", Transient(Menu::Push)),
         ("F", Transient(Menu::Pull)),
         ("f", Transient(Menu::Fetch)),

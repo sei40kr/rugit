@@ -311,6 +311,8 @@ pub fn default_keymaps() -> Keymaps {
         ("UP", Nav(MoveUp)),
         ("C-d", Nav(HalfPageDown)),
         ("C-u", Nav(HalfPageUp)),
+        ("C-f", Nav(PageDown)),
+        ("C-b", Nav(PageUp)),
         ("PGDN", Nav(HalfPageDown)),
         ("PGUP", Nav(HalfPageUp)),
         ("HOME", Nav(GotoTop)),

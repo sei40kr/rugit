@@ -115,6 +115,8 @@ impl Pane {
             NavCmd::MoveUp => self.move_cursor(-1),
             NavCmd::HalfPageDown => self.move_cursor(half),
             NavCmd::HalfPageUp => self.move_cursor(-half),
+            NavCmd::PageDown => self.move_cursor(height as isize),
+            NavCmd::PageUp => self.move_cursor(-(height as isize)),
             NavCmd::GotoTop => self.goto_top(),
             NavCmd::GotoBottom => self.goto_bottom(),
             NavCmd::NextSection => self.next_section(),

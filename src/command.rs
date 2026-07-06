@@ -46,6 +46,8 @@ pub enum NavCmd {
     MoveUp,
     HalfPageDown,
     HalfPageUp,
+    PageDown,
+    PageUp,
     GotoTop,
     GotoBottom,
     NextSection,
@@ -97,6 +99,16 @@ pub const COMMANDS: &[CommandInfo] = &[
         Command::Nav(NavCmd::HalfPageUp),
         "half-page-up",
         "Scroll half a page up",
+    ),
+    ci(
+        Command::Nav(NavCmd::PageDown),
+        "page-down",
+        "Scroll a full page down",
+    ),
+    ci(
+        Command::Nav(NavCmd::PageUp),
+        "page-up",
+        "Scroll a full page up",
     ),
     ci(
         Command::Nav(NavCmd::GotoTop),

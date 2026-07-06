@@ -50,6 +50,16 @@ pub enum TransientAction {
     CherryPickSkip,
     /// Abort the in-progress cherry-pick (after a y/n confirm).
     CherryPickAbort,
+    /// Opens a picker over revisions, then reverts with a new commit.
+    Revert,
+    /// Revert without committing.
+    RevertNoCommit,
+    /// Continue the in-progress revert (may open $EDITOR).
+    RevertContinue,
+    /// Skip the commit that stopped the in-progress revert.
+    RevertSkip,
+    /// Abort the in-progress revert (after a y/n confirm).
+    RevertAbort,
     /// Rebase the current branch onto its upstream.
     RebaseUpstream,
     /// Opens a picker over branches, then rebases onto the chosen one.
@@ -537,6 +547,84 @@ pub static CHERRY_PICK_IN_PROGRESS: TransientDef = TransientDef {
     }],
 };
 
+// Revert commits with a new commit or onto the worktree/index only;
+// `--edit` starts enabled.
+pub static REVERT: TransientDef = TransientDef {
+    title: "Revert",
+    defaults: &["--edit"],
+    incompatible: &[],
+    groups: &[
+        GroupDef {
+            title: "Arguments",
+            items: &[
+                Item::Arg {
+                    key: "-m",
+                    flag: "--mainline=",
+                    desc: "Replay merge relative to parent",
+                },
+                Item::Switch {
+                    key: "-e",
+                    flag: "--edit",
+                    desc: "Edit commit message",
+                },
+                Item::Switch {
+                    key: "-E",
+                    flag: "--no-edit",
+                    desc: "Don't edit commit message",
+                },
+                Item::Arg {
+                    key: "=s",
+                    flag: "--strategy=",
+                    desc: "Strategy",
+                },
+            ],
+        },
+        GroupDef {
+            title: "Actions",
+            items: &[
+                Item::Action {
+                    key: "V",
+                    desc: "Revert commit",
+                    action: TransientAction::Revert,
+                },
+                Item::Action {
+                    key: "v",
+                    desc: "Revert changes",
+                    action: TransientAction::RevertNoCommit,
+                },
+            ],
+        },
+    ],
+};
+
+/// Shown instead of `REVERT` while a revert is stopped (REVERT_HEAD
+/// exists): the sequencer can only continue, skip or abort.
+pub static REVERT_IN_PROGRESS: TransientDef = TransientDef {
+    title: "Revert (in progress)",
+    defaults: &[],
+    incompatible: &[],
+    groups: &[GroupDef {
+        title: "Actions",
+        items: &[
+            Item::Action {
+                key: "V",
+                desc: "Continue",
+                action: TransientAction::RevertContinue,
+            },
+            Item::Action {
+                key: "s",
+                desc: "Skip this commit",
+                action: TransientAction::RevertSkip,
+            },
+            Item::Action {
+                key: "a",
+                desc: "Abort revert",
+                action: TransientAction::RevertAbort,
+            },
+        ],
+    }],
+};
+
 pub static PULL: TransientDef = TransientDef {
     title: "Pull",
     defaults: &[],
@@ -675,6 +763,7 @@ pub fn menu_def(menu: Menu) -> &'static TransientDef {
         Menu::Merge => &MERGE,
         Menu::Rebase => &REBASE,
         Menu::CherryPick => &CHERRY_PICK,
+        Menu::Revert => &REVERT,
         Menu::Push => &PUSH,
         Menu::Pull => &PULL,
         Menu::Fetch => &FETCH,
@@ -1025,6 +1114,32 @@ mod tests {
         );
         // Starting a new cherry-pick is not offered while one is stopped.
         assert_eq!(st.on_key(&key('e')), TransientResult::Unbound);
+    }
+
+    #[test]
+    fn revert_menu_defaults_to_edit() {
+        let mut st = TransientState::new(&REVERT);
+        match st.on_key(&key('V')) {
+            TransientResult::Invoke(TransientAction::Revert, args) => {
+                assert_eq!(args, vec!["--edit"]);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn in_progress_revert_menu_only_manages_the_sequence() {
+        let mut st = TransientState::new(&REVERT_IN_PROGRESS);
+        assert_eq!(
+            st.on_key(&key('V')),
+            TransientResult::Invoke(TransientAction::RevertContinue, vec![])
+        );
+        assert_eq!(
+            st.on_key(&key('a')),
+            TransientResult::Invoke(TransientAction::RevertAbort, vec![])
+        );
+        // Starting a new revert is not offered while one is stopped.
+        assert_eq!(st.on_key(&key('v')), TransientResult::Unbound);
     }
 
     #[test]

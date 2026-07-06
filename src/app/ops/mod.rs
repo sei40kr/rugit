@@ -11,12 +11,13 @@ mod log;
 mod merge;
 mod rebase;
 mod remote;
+mod revert;
 
 use crate::command::Menu;
 use crate::ui::input::InputState;
 use crate::ui::transient::{
     menu_def, TransientAction, TransientState, CHERRY_PICK_IN_PROGRESS, MERGE_IN_PROGRESS,
-    REBASE_IN_PROGRESS,
+    REBASE_IN_PROGRESS, REVERT_IN_PROGRESS,
 };
 
 use super::App;
@@ -29,6 +30,7 @@ impl App {
             Menu::Merge if self.merging() => &MERGE_IN_PROGRESS,
             Menu::Rebase if self.rebasing() => &REBASE_IN_PROGRESS,
             Menu::CherryPick if self.cherry_picking() => &CHERRY_PICK_IN_PROGRESS,
+            Menu::Revert if self.reverting() => &REVERT_IN_PROGRESS,
             _ => menu_def(menu),
         };
         self.transient = Some(TransientState::new(def));
@@ -47,6 +49,9 @@ impl App {
             | RebaseEditTodo | RebaseAbort => self.rebase_action(action, args),
             CherryPick | CherryPickApply | CherryPickContinue | CherryPickSkip
             | CherryPickAbort => self.cherry_pick_action(action, args),
+            Revert | RevertNoCommit | RevertContinue | RevertSkip | RevertAbort => {
+                self.revert_action(action, args)
+            }
             LogCurrent | LogAll | LogOther => self.log_action(action, args),
         }
     }

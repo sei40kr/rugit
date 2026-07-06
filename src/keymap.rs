@@ -327,6 +327,9 @@ pub fn default_keymaps() -> Keymaps {
         ("m", Transient(Menu::Merge)),
         ("r", Transient(Menu::Rebase)),
         ("A", Transient(Menu::CherryPick)),
+        // Revert lives on "_" (and discard on "x"): the mnemonic keys
+        // are adapted to vim-style bindings, where V selects lines.
+        ("_", Transient(Menu::Revert)),
         ("P", Transient(Menu::Push)),
         ("F", Transient(Menu::Pull)),
         ("f", Transient(Menu::Fetch)),

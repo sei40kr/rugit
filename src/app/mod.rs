@@ -239,10 +239,7 @@ impl App {
         let height = 40; // page motions use a nominal height; follow() clamps
         match cmd {
             Command::Quit => self.quit_or_pop(),
-            Command::Refresh => {
-                self.refresh_current();
-                self.message = Some("refreshing".into());
-            }
+            Command::Refresh => self.refresh_current(),
             // While a search is active, n/p walk matches instead of sections.
             Command::Nav(NavCmd::NextSection) if self.search.query.is_some() => self.search_move(1),
             Command::Nav(NavCmd::PrevSection) if self.search.query.is_some() => {

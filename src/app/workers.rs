@@ -99,9 +99,23 @@ impl App {
         });
     }
 
+    /// Message shown while an explicit refresh runs; the completion
+    /// handlers clear it (a mutation's "... done" message replaces it, so
+    /// only the literal marker is ever cleared).
+    const REFRESHING: &'static str = "refreshing";
+
+    /// Clear the "refreshing" message once the refreshed data arrived.
+    fn clear_refreshing(&mut self) {
+        if self.message.as_deref() == Some(Self::REFRESHING) {
+            self.message = None;
+        }
+    }
+
     /// Refresh whatever the active buffer shows: re-run the log for a log
-    /// pane, otherwise re-read the status snapshot.
+    /// pane, otherwise re-read the status snapshot. This is the explicit
+    /// (user-triggered) refresh, so it announces itself.
     pub(super) fn refresh_current(&mut self) {
+        self.message = Some(Self::REFRESHING.into());
         if let Some(pane) = self.panes.last() {
             if pane.kind == PaneKind::Log {
                 if let Some(args) = pane.log_args.clone() {
@@ -195,6 +209,7 @@ impl App {
         replace: bool,
     ) {
         self.busy = None;
+        self.clear_refreshing();
         let root = build::build_log(&self.theme, &title, &entries);
         let top_is_log = self.panes.last().map(|p| p.kind) == Some(PaneKind::Log);
         if replace && top_is_log {
@@ -217,6 +232,7 @@ impl App {
         if gen == self.refresh_gen {
             match result {
                 Ok(snapshot) => {
+                    self.clear_refreshing();
                     let root = build::build_status(&self.theme, &snapshot);
                     if let Some(pane) = self.panes.iter_mut().find(|p| p.kind == PaneKind::Status) {
                         pane.replace_tree(root);

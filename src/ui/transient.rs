@@ -87,6 +87,10 @@ pub enum TransientAction {
     /// Reset only the worktree to a revision (HEAD and index stay,
     /// confirmed).
     ResetWorktree,
+    /// Opens a minibuffer for the tag name, then a picker for the revision.
+    TagCreate,
+    /// Opens a picker over tags, then deletes the chosen one.
+    TagDelete,
     /// Stash the worktree and index (`git stash push`).
     StashBoth,
     /// Stash only staged changes (`git stash push --staged`).
@@ -756,6 +760,60 @@ pub static STASH: TransientDef = TransientDef {
     ],
 };
 
+// Create (optionally annotated/signed) and delete tags.
+pub static TAG: TransientDef = TransientDef {
+    title: "Tag",
+    defaults: &[],
+    incompatible: &[],
+    groups: &[
+        GroupDef {
+            title: "Arguments",
+            items: &[
+                Item::Switch {
+                    key: "-f",
+                    flag: "--force",
+                    desc: "Force",
+                },
+                Item::Switch {
+                    key: "-e",
+                    flag: "--edit",
+                    desc: "Edit message",
+                },
+                Item::Switch {
+                    key: "-a",
+                    flag: "--annotate",
+                    desc: "Annotate",
+                },
+                Item::Switch {
+                    key: "-s",
+                    flag: "--sign",
+                    desc: "Sign",
+                },
+                Item::Arg {
+                    key: "-u",
+                    flag: "--local-user=",
+                    desc: "Sign as",
+                },
+            ],
+        },
+        GroupDef {
+            title: "Actions",
+            items: &[
+                Item::Action {
+                    key: "t",
+                    desc: "Create tag",
+                    action: TransientAction::TagCreate,
+                },
+                Item::Action {
+                    key: "k",
+                    desc: "Delete tag",
+                    action: TransientAction::TagDelete,
+                },
+            ],
+        },
+    ],
+};
+
 pub static PULL: TransientDef = TransientDef {
     title: "Pull",
     defaults: &[],
@@ -897,6 +955,7 @@ pub fn menu_def(menu: Menu) -> &'static TransientDef {
         Menu::Revert => &REVERT,
         Menu::Reset => &RESET,
         Menu::Stash => &STASH,
+        Menu::Tag => &TAG,
         Menu::Push => &PUSH,
         Menu::Pull => &PULL,
         Menu::Fetch => &FETCH,

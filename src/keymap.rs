@@ -332,6 +332,7 @@ pub fn default_keymaps() -> Keymaps {
         ("_", Transient(Menu::Revert)),
         ("O", Transient(Menu::Reset)),
         ("Z", Transient(Menu::Stash)),
+        ("t", Transient(Menu::Tag)),
         ("P", Transient(Menu::Push)),
         ("F", Transient(Menu::Pull)),
         ("f", Transient(Menu::Fetch)),

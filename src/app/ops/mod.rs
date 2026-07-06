@@ -14,6 +14,7 @@ mod remote;
 mod reset;
 mod revert;
 mod stash;
+mod tag;
 
 use crate::command::Menu;
 use crate::ui::input::InputState;
@@ -60,6 +61,7 @@ impl App {
             StashBoth | StashIndex | StashKeepIndex | StashApply | StashPop | StashDrop => {
                 self.stash_action(action, args)
             }
+            TagCreate | TagDelete => self.tag_action(action, args),
             LogCurrent | LogAll | LogOther => self.log_action(action, args),
         }
     }
@@ -73,6 +75,17 @@ impl App {
             InputState::picker(desc, candidates),
             true,
             move |app, value| {
+                // Signing-key candidates read "KEYID uid"; only the key id
+                // goes into the flag.
+                let value = if matches!(flag, "--local-user=" | "--gpg-sign=") {
+                    value
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or_default()
+                        .to_string()
+                } else {
+                    value
+                };
                 if let Some(t) = app.transient.as_mut() {
                     t.set_value(flag, value);
                 }
@@ -91,7 +104,45 @@ impl App {
             // Merge parents to replay relative to — almost always one of
             // the two sides; typed input covers octopus merges.
             "--mainline=" => list(&["1", "2"]),
+            // Secret keys gpg can sign with.
+            "--local-user=" | "--gpg-sign=" => self.list_gpg_signing_keys(),
             _ => Vec::new(),
         }
+    }
+
+    /// Secret GPG keys as "KEYID uid" picker candidates. Missing gpg (or
+    /// no keys) leaves the list empty; the picker still accepts a typed
+    /// key id.
+    fn list_gpg_signing_keys(&self) -> Vec<String> {
+        let Ok(out) = std::process::Command::new("gpg")
+            .args(["--list-secret-keys", "--with-colons"])
+            .output()
+        else {
+            return Vec::new();
+        };
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let mut keys = Vec::new();
+        let mut pending: Option<String> = None;
+        for line in stdout.lines() {
+            let fields: Vec<&str> = line.split(':').collect();
+            match fields.first().copied() {
+                Some("sec") => {
+                    if let Some(id) = pending.take() {
+                        keys.push(id);
+                    }
+                    pending = fields.get(4).map(|id| id.to_string());
+                }
+                Some("uid") => {
+                    if let (Some(id), Some(uid)) = (pending.take(), fields.get(9)) {
+                        keys.push(format!("{id} {uid}"));
+                    }
+                }
+                _ => {}
+            }
+        }
+        if let Some(id) = pending {
+            keys.push(id);
+        }
+        keys
     }
 }

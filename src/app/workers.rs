@@ -18,7 +18,7 @@ use super::{svec, App, AppEvent};
 /// cost on a large worktree. This is a deliberate index write; the watcher
 /// event it triggers folds into the single-flight refresh. Exit status is
 /// meaningless here (1 just means some paths still differ).
-fn refresh_index_stat_cache(git: &crate::git::client::GitClient) {
+pub(super) fn refresh_index_stat_cache(git: &crate::git::client::GitClient) {
     let _ = git.run(&["update-index", "-q", "--refresh", "--unmerged"]);
 }
 

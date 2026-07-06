@@ -122,7 +122,7 @@ impl App {
 
     /// Remote names for the pickers. Listing them is a fast local read,
     /// like `list_branches`.
-    fn list_remotes(&self) -> Vec<String> {
+    pub(super) fn list_remotes(&self) -> Vec<String> {
         self.git
             .run(&["remote"])
             .map(|o| o.stdout)

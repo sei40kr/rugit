@@ -47,6 +47,7 @@ impl App {
     fn transient_scope(&self, menu: Menu) -> Option<String> {
         match menu {
             Menu::Remote => self.current_remote(),
+            Menu::Branch => self.snapshot.as_ref().and_then(|s| s.branch.head.clone()),
             _ => None,
         }
     }
@@ -83,6 +84,9 @@ impl App {
             "remote.{}.followRemoteHEAD" => {
                 (to_vec(&["create", "always", "warn"]), None, Some("create"))
             }
+            // The push-remote choices are the actual remotes.
+            "branch.{}.pushRemote" => (self.list_remotes(), Some("remote.pushDefault"), None),
+            "remote.pushDefault" => (self.list_remotes(), None, None),
             _ => return,
         };
         // The fallback variable's value wins over the built-in default
@@ -244,7 +248,10 @@ impl App {
         match action {
             Commit | CommitAmend | CommitExtend => self.commit_action(action, args),
             Push | PushSetUpstream | Pull | Fetch | FetchAll => self.remote_action(action, args),
-            Checkout | CreateCheckoutBranch | CreateBranch => self.branch_action(action),
+            Checkout | CheckoutLocal | CreateCheckoutBranch | CreateBranch | BranchSpinoff
+            | BranchSpinout | BranchRename | BranchReset | BranchDelete | BranchConfigure => {
+                self.branch_action(action)
+            }
             Merge | MergeEdit | MergeNoCommit | MergeSquash | MergeAbsorb | MergePreview
             | MergeInto | MergeAbort => self.merge_action(action, args),
             RebaseUpstream | RebaseElsewhere | RebaseInteractive | RebaseContinue | RebaseSkip

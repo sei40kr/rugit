@@ -114,12 +114,30 @@ pub enum TransientAction {
     RemoteRemove,
     /// Opens a picker over remotes, then prunes stale tracking branches.
     RemotePrune,
-    /// Opens a picker over local and remote branches.
+    /// Opens a picker over branches and revisions, then checks it out.
     Checkout,
-    /// Opens a minibuffer for the new branch name, then checks it out.
+    /// Opens a picker over local branches only, then checks it out.
+    CheckoutLocal,
+    /// Opens a minibuffer for the new branch name, then a picker for the
+    /// starting point, then checks the new branch out.
     CreateCheckoutBranch,
-    /// Opens a minibuffer for the new branch name (no checkout).
+    /// Like `CreateCheckoutBranch`, but stays on the current branch.
     CreateBranch,
+    /// Move the unpushed commits onto a new checked-out branch and reset
+    /// the old branch to its upstream.
+    BranchSpinoff,
+    /// Like `BranchSpinoff`, but stay on the (reset) old branch.
+    BranchSpinout,
+    /// Opens a picker over local branches, then a minibuffer for its new name.
+    BranchRename,
+    /// Opens pickers for a local branch and the revision to reset it to.
+    BranchReset,
+    /// Opens a picker over local branches, then deletes the chosen one
+    /// (confirmed first when it is unmerged).
+    BranchDelete,
+    /// Opens a picker over local branches, then a variables menu for
+    /// the chosen one.
+    BranchConfigure,
     /// Log the current branch (HEAD).
     LogCurrent,
     /// Log all refs (`--all`).
@@ -289,30 +307,127 @@ pub static PUSH: TransientDef = TransientDef {
     ],
 };
 
+/// The per-branch variables, scoped to
+/// the current branch in the branch menu and to a picked one in the
+/// configure menu. `branch.{}.upstream` is a pseudo-variable standing for
+/// `.merge`/`.remote` together.
+const BRANCH_VARIABLES: GroupDef = GroupDef {
+    title: "Configure branch",
+    items: &[
+        Item::Variable {
+            key: "d",
+            var: "branch.{}.description",
+        },
+        Item::Variable {
+            key: "u",
+            var: "branch.{}.upstream",
+        },
+        Item::Variable {
+            key: "r",
+            var: "branch.{}.rebase",
+        },
+        Item::Variable {
+            key: "p",
+            var: "branch.{}.pushRemote",
+        },
+    ],
+};
+
+// Checkout, creation (including spin-off/spin-out), rename, reset and
+// delete, plus per-branch and repository-default configuration.
 pub static BRANCH: TransientDef = TransientDef {
     title: "Branch",
     defaults: &[],
     incompatible: &[],
-    groups: &[GroupDef {
-        title: "Actions",
-        items: &[
-            Item::Action {
-                key: "b",
-                desc: "Checkout branch/revision",
-                action: TransientAction::Checkout,
-            },
-            Item::Action {
-                key: "c",
-                desc: "Create new branch and checkout",
-                action: TransientAction::CreateCheckoutBranch,
-            },
-            Item::Action {
-                key: "n",
-                desc: "Create new branch",
-                action: TransientAction::CreateBranch,
-            },
-        ],
-    }],
+    groups: &[
+        BRANCH_VARIABLES,
+        GroupDef {
+            title: "Configure repository defaults",
+            items: &[
+                Item::Variable {
+                    key: "R",
+                    var: "pull.rebase",
+                },
+                Item::Variable {
+                    key: "P",
+                    var: "remote.pushDefault",
+                },
+            ],
+        },
+        GroupDef {
+            title: "Checkout",
+            items: &[
+                Item::Action {
+                    key: "b",
+                    desc: "branch/revision",
+                    action: TransientAction::Checkout,
+                },
+                Item::Action {
+                    key: "l",
+                    desc: "local branch",
+                    action: TransientAction::CheckoutLocal,
+                },
+                Item::Action {
+                    key: "c",
+                    desc: "new branch",
+                    action: TransientAction::CreateCheckoutBranch,
+                },
+                Item::Action {
+                    key: "s",
+                    desc: "new spin-off",
+                    action: TransientAction::BranchSpinoff,
+                },
+            ],
+        },
+        GroupDef {
+            title: "Create",
+            items: &[
+                Item::Action {
+                    key: "n",
+                    desc: "new branch",
+                    action: TransientAction::CreateBranch,
+                },
+                Item::Action {
+                    key: "S",
+                    desc: "new spin-out",
+                    action: TransientAction::BranchSpinout,
+                },
+            ],
+        },
+        GroupDef {
+            title: "Do",
+            items: &[
+                Item::Action {
+                    key: "C",
+                    desc: "configure...",
+                    action: TransientAction::BranchConfigure,
+                },
+                Item::Action {
+                    key: "m",
+                    desc: "rename",
+                    action: TransientAction::BranchRename,
+                },
+                Item::Action {
+                    key: "x",
+                    desc: "reset",
+                    action: TransientAction::BranchReset,
+                },
+                Item::Action {
+                    key: "k",
+                    desc: "delete",
+                    action: TransientAction::BranchDelete,
+                },
+            ],
+        },
+    ],
+};
+
+/// Variables menu for an explicitly picked branch.
+pub static BRANCH_CONFIGURE: TransientDef = TransientDef {
+    title: "Configure branch",
+    defaults: &[],
+    incompatible: &[],
+    groups: &[BRANCH_VARIABLES],
 };
 
 // Arguments and actions mirror `magit-merge` (default levels), including

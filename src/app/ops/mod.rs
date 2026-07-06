@@ -47,7 +47,7 @@ impl App {
     fn transient_scope(&self, menu: Menu) -> Option<String> {
         match menu {
             Menu::Remote => self.current_remote(),
-            Menu::Branch => self.snapshot.as_ref().and_then(|s| s.branch.head.clone()),
+            Menu::Branch | Menu::Pull => self.snapshot.as_ref().and_then(|s| s.branch.head.clone()),
             _ => None,
         }
     }
@@ -247,7 +247,10 @@ impl App {
         use TransientAction::*;
         match action {
             Commit | CommitAmend | CommitExtend => self.commit_action(action, args),
-            Push | PushSetUpstream | Pull | Fetch | FetchAll => self.remote_action(action, args),
+            PushToPushRemote | PushToUpstream | PushElsewhere | PushOther | PushRefspecs
+            | PushMatching | PushTag | PushTags | PullFromPushRemote | PullFromUpstream
+            | PullElsewhere | FetchFromPushRemote | FetchFromUpstream | FetchElsewhere
+            | FetchAll | FetchBranch | FetchRefspec => self.remote_action(action, args),
             Checkout | CheckoutLocal | CreateCheckoutBranch | CreateBranch | BranchSpinoff
             | BranchSpinout | BranchRename | BranchReset | BranchDelete | BranchConfigure => {
                 self.branch_action(action)

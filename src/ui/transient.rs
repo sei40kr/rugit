@@ -18,11 +18,41 @@ pub enum TransientAction {
     Commit,
     CommitAmend,
     CommitExtend,
-    Push,
-    PushSetUpstream,
-    Pull,
-    Fetch,
+    /// Push the current branch to its push-remote.
+    PushToPushRemote,
+    /// Push the current branch to its upstream.
+    PushToUpstream,
+    /// Opens a picker over remote branches, then pushes the current branch
+    /// to the chosen target.
+    PushElsewhere,
+    /// Opens pickers for a local branch and its remote target, then pushes.
+    PushOther,
+    /// Opens a picker for the remote, then a minibuffer for the refspecs.
+    PushRefspecs,
+    /// Push all matching branches to a chosen remote.
+    PushMatching,
+    /// Opens pickers for a tag and the remote to push it to.
+    PushTag,
+    /// Push all tags to a chosen remote.
+    PushTags,
+    /// Pull into the current branch from its push-remote.
+    PullFromPushRemote,
+    /// Pull into the current branch from its upstream.
+    PullFromUpstream,
+    /// Opens a picker over remote branches, then pulls from the chosen one.
+    PullElsewhere,
+    /// Fetch from the current branch's push-remote.
+    FetchFromPushRemote,
+    /// Fetch from the current branch's upstream remote.
+    FetchFromUpstream,
+    /// Opens a picker over remotes, then fetches from the chosen one.
+    FetchElsewhere,
+    /// Fetch from all remotes.
     FetchAll,
+    /// Opens a picker over remote branches, then fetches just that branch.
+    FetchBranch,
+    /// Opens a picker for the remote, then a minibuffer for the refspec.
+    FetchRefspec,
     /// Opens a picker over branches, then merges headlessly (`--no-edit`).
     Merge,
     /// Like `Merge`, but hands the merge message to $EDITOR.
@@ -264,6 +294,8 @@ pub static COMMIT: TransientDef = TransientDef {
     ],
 };
 
+// Push the current branch to its push-remote/upstream or elsewhere, plus
+// other branches, explicit refspecs, matching branches and tags.
 pub static PUSH: TransientDef = TransientDef {
     title: "Push",
     defaults: &[],
@@ -283,26 +315,84 @@ pub static PUSH: TransientDef = TransientDef {
                     desc: "Force",
                 },
                 Item::Switch {
+                    key: "-h",
+                    flag: "--no-verify",
+                    desc: "Disable hooks",
+                },
+                Item::Switch {
                     key: "-n",
                     flag: "--dry-run",
                     desc: "Dry run",
                 },
+                Item::Switch {
+                    key: "-T",
+                    flag: "--tags",
+                    desc: "Include all tags",
+                },
+                Item::Switch {
+                    key: "-t",
+                    flag: "--follow-tags",
+                    desc: "Include related annotated tags",
+                },
             ],
         },
         GroupDef {
-            title: "Actions",
+            title: "Push current branch to",
             items: &[
                 Item::Action {
                     key: "p",
-                    desc: "Push to upstream",
-                    action: TransientAction::Push,
+                    desc: "push-remote",
+                    action: TransientAction::PushToPushRemote,
                 },
                 Item::Action {
                     key: "u",
-                    desc: "Push and set upstream (origin HEAD)",
-                    action: TransientAction::PushSetUpstream,
+                    desc: "upstream",
+                    action: TransientAction::PushToUpstream,
+                },
+                Item::Action {
+                    key: "e",
+                    desc: "elsewhere",
+                    action: TransientAction::PushElsewhere,
                 },
             ],
+        },
+        GroupDef {
+            title: "Push",
+            items: &[
+                Item::Action {
+                    key: "o",
+                    desc: "another branch",
+                    action: TransientAction::PushOther,
+                },
+                Item::Action {
+                    key: "r",
+                    desc: "explicit refspecs",
+                    action: TransientAction::PushRefspecs,
+                },
+                Item::Action {
+                    key: "m",
+                    desc: "matching branches",
+                    action: TransientAction::PushMatching,
+                },
+                Item::Action {
+                    key: "T",
+                    desc: "a tag",
+                    action: TransientAction::PushTag,
+                },
+                Item::Action {
+                    key: "t",
+                    desc: "all tags",
+                    action: TransientAction::PushTags,
+                },
+            ],
+        },
+        GroupDef {
+            title: "Configure",
+            items: &[Item::Action {
+                key: "C",
+                desc: "Set variables...",
+                action: TransientAction::BranchConfigure,
+            }],
         },
     ],
 };
@@ -1047,37 +1137,72 @@ pub static REMOTE_CONFIGURE: TransientDef = TransientDef {
     groups: &[REMOTE_VARIABLES],
 };
 
+// Pull into the current branch; `--ff-only` and `--rebase` are mutually
+// exclusive.
 pub static PULL: TransientDef = TransientDef {
     title: "Pull",
     defaults: &[],
-    incompatible: &[],
+    incompatible: &[&["--ff-only", "--rebase"]],
     groups: &[
         GroupDef {
             title: "Arguments",
             items: &[
+                Item::Switch {
+                    key: "-f",
+                    flag: "--ff-only",
+                    desc: "Fast-forward only",
+                },
                 Item::Switch {
                     key: "-r",
                     flag: "--rebase",
                     desc: "Rebase local commits",
                 },
                 Item::Switch {
-                    key: "-a",
-                    flag: "--autostash",
-                    desc: "Autostash",
+                    key: "-F",
+                    flag: "--force",
+                    desc: "Force",
                 },
             ],
         },
         GroupDef {
-            title: "Actions",
-            items: &[Item::Action {
-                key: "u",
-                desc: "Pull from upstream",
-                action: TransientAction::Pull,
-            }],
+            title: "Pull into current branch from",
+            items: &[
+                Item::Action {
+                    key: "p",
+                    desc: "push-remote",
+                    action: TransientAction::PullFromPushRemote,
+                },
+                Item::Action {
+                    key: "u",
+                    desc: "upstream",
+                    action: TransientAction::PullFromUpstream,
+                },
+                Item::Action {
+                    key: "e",
+                    desc: "elsewhere",
+                    action: TransientAction::PullElsewhere,
+                },
+            ],
+        },
+        GroupDef {
+            title: "Configure",
+            items: &[
+                Item::Variable {
+                    key: "r",
+                    var: "branch.{}.rebase",
+                },
+                Item::Action {
+                    key: "C",
+                    desc: "variables...",
+                    action: TransientAction::BranchConfigure,
+                },
+            ],
         },
     ],
 };
 
+// Fetch from the push-remote/upstream, a picked remote or all remotes,
+// down to a single branch or an explicit refspec.
 pub static FETCH: TransientDef = TransientDef {
     title: "Fetch",
     defaults: &[],
@@ -1085,26 +1210,71 @@ pub static FETCH: TransientDef = TransientDef {
     groups: &[
         GroupDef {
             title: "Arguments",
-            items: &[Item::Switch {
-                key: "-p",
-                flag: "--prune",
-                desc: "Prune deleted branches",
-            }],
+            items: &[
+                Item::Switch {
+                    key: "-p",
+                    flag: "--prune",
+                    desc: "Prune deleted branches",
+                },
+                Item::Switch {
+                    key: "-t",
+                    flag: "--tags",
+                    desc: "Fetch all tags",
+                },
+                Item::Switch {
+                    key: "-F",
+                    flag: "--force",
+                    desc: "Force",
+                },
+            ],
         },
         GroupDef {
-            title: "Actions",
+            title: "Fetch from",
             items: &[
                 Item::Action {
+                    key: "p",
+                    desc: "push-remote",
+                    action: TransientAction::FetchFromPushRemote,
+                },
+                Item::Action {
                     key: "u",
-                    desc: "Fetch from upstream",
-                    action: TransientAction::Fetch,
+                    desc: "upstream",
+                    action: TransientAction::FetchFromUpstream,
+                },
+                Item::Action {
+                    key: "e",
+                    desc: "elsewhere",
+                    action: TransientAction::FetchElsewhere,
                 },
                 Item::Action {
                     key: "a",
-                    desc: "Fetch from all remotes",
+                    desc: "all remotes",
                     action: TransientAction::FetchAll,
                 },
             ],
+        },
+        GroupDef {
+            title: "Fetch",
+            items: &[
+                Item::Action {
+                    key: "o",
+                    desc: "another branch",
+                    action: TransientAction::FetchBranch,
+                },
+                Item::Action {
+                    key: "r",
+                    desc: "explicit refspec",
+                    action: TransientAction::FetchRefspec,
+                },
+            ],
+        },
+        GroupDef {
+            title: "Configure",
+            items: &[Item::Action {
+                key: "C",
+                desc: "variables...",
+                action: TransientAction::BranchConfigure,
+            }],
         },
     ],
 };

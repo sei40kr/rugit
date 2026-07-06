@@ -66,6 +66,7 @@ pub enum Menu {
     Reset,
     Stash,
     Tag,
+    Remote,
     Push,
     Pull,
     Fetch,
@@ -191,6 +192,11 @@ pub const COMMANDS: &[CommandInfo] = &[
         "Open the stash menu",
     ),
     ci(Command::Transient(Menu::Tag), "tag", "Open the tag menu"),
+    ci(
+        Command::Transient(Menu::Remote),
+        "remote",
+        "Open the remote menu",
+    ),
     ci(Command::Transient(Menu::Push), "push", "Open the push menu"),
     ci(Command::Transient(Menu::Pull), "pull", "Open the pull menu"),
     ci(

@@ -103,6 +103,17 @@ pub enum TransientAction {
     StashPop,
     /// Drop a stash (after a y/n confirm).
     StashDrop,
+    /// Opens a picker over remotes, then a variables menu for the
+    /// chosen one.
+    RemoteConfigure,
+    /// Opens a minibuffer for the remote name, then one for its URL.
+    RemoteAdd,
+    /// Opens a picker over remotes, then a minibuffer for the new name.
+    RemoteRename,
+    /// Opens a picker over remotes, then removes the chosen one.
+    RemoteRemove,
+    /// Opens a picker over remotes, then prunes stale tracking branches.
+    RemotePrune,
     /// Opens a picker over local and remote branches.
     Checkout,
     /// Opens a minibuffer for the new branch name, then checks it out.
@@ -831,6 +842,96 @@ pub static TAG: TransientDef = TransientDef {
     ],
 };
 
+/// The per-remote variables, scoped to
+/// the current remote in the remote menu and to a picked one in the
+/// configure menu.
+const REMOTE_VARIABLES: GroupDef = GroupDef {
+    title: "Variables",
+    items: &[
+        Item::Variable {
+            key: "u",
+            var: "remote.{}.url",
+        },
+        Item::Variable {
+            key: "U",
+            var: "remote.{}.fetch",
+        },
+        Item::Variable {
+            key: "s",
+            var: "remote.{}.pushurl",
+        },
+        Item::Variable {
+            key: "S",
+            var: "remote.{}.push",
+        },
+        Item::Variable {
+            key: "O",
+            var: "remote.{}.tagOpt",
+        },
+        Item::Variable {
+            key: "h",
+            var: "remote.{}.followRemoteHEAD",
+        },
+    ],
+};
+
+// Add, configure or remove remotes; `-f` (fetch after add) starts
+// enabled.
+pub static REMOTE: TransientDef = TransientDef {
+    title: "Remote",
+    defaults: &["-f"],
+    incompatible: &[],
+    groups: &[
+        REMOTE_VARIABLES,
+        GroupDef {
+            title: "Arguments for add",
+            items: &[Item::Switch {
+                key: "-f",
+                flag: "-f",
+                desc: "Fetch after add",
+            }],
+        },
+        GroupDef {
+            title: "Actions",
+            items: &[
+                Item::Action {
+                    key: "a",
+                    desc: "Add",
+                    action: TransientAction::RemoteAdd,
+                },
+                Item::Action {
+                    key: "r",
+                    desc: "Rename",
+                    action: TransientAction::RemoteRename,
+                },
+                Item::Action {
+                    key: "k",
+                    desc: "Remove",
+                    action: TransientAction::RemoteRemove,
+                },
+                Item::Action {
+                    key: "C",
+                    desc: "Configure...",
+                    action: TransientAction::RemoteConfigure,
+                },
+                Item::Action {
+                    key: "p",
+                    desc: "Prune stale branches",
+                    action: TransientAction::RemotePrune,
+                },
+            ],
+        },
+    ],
+};
+
+/// Variables menu for an explicitly picked remote.
+pub static REMOTE_CONFIGURE: TransientDef = TransientDef {
+    title: "Configure remote",
+    defaults: &[],
+    incompatible: &[],
+    groups: &[REMOTE_VARIABLES],
+};
+
 pub static PULL: TransientDef = TransientDef {
     title: "Pull",
     defaults: &[],
@@ -973,6 +1074,7 @@ pub fn menu_def(menu: Menu) -> &'static TransientDef {
         Menu::Reset => &RESET,
         Menu::Stash => &STASH,
         Menu::Tag => &TAG,
+        Menu::Remote => &REMOTE,
         Menu::Push => &PUSH,
         Menu::Pull => &PULL,
         Menu::Fetch => &FETCH,

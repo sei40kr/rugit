@@ -44,8 +44,11 @@ impl App {
 
     /// What `{}` in the menu's variable items resolves to. Menus without
     /// variables have no scope.
-    fn transient_scope(&self, _menu: Menu) -> Option<String> {
-        None
+    fn transient_scope(&self, menu: Menu) -> Option<String> {
+        match menu {
+            Menu::Remote => self.current_remote(),
+            _ => None,
+        }
     }
 
     /// Read the current values of every variable item in the definition.
@@ -228,7 +231,6 @@ impl App {
 
     /// Open a variables-only transient (the branch/remote configure
     /// menus) for an explicitly chosen scope.
-    #[allow(dead_code)]
     pub(super) fn open_configure_transient(&mut self, def: &'static TransientDef, scope: String) {
         let mut st = TransientState::new(def);
         st.scope = Some(scope);
@@ -259,6 +261,9 @@ impl App {
                 self.stash_action(action, args)
             }
             TagCreate | TagDelete => self.tag_action(action, args),
+            RemoteConfigure | RemoteAdd | RemoteRename | RemoteRemove | RemotePrune => {
+                self.remote_menu_action(action, args)
+            }
             LogCurrent | LogAll | LogOther => self.log_action(action, args),
         }
     }

@@ -326,6 +326,7 @@ pub fn default_keymaps() -> Keymaps {
         ("b", Transient(Menu::Branch)),
         ("m", Transient(Menu::Merge)),
         ("r", Transient(Menu::Rebase)),
+        ("A", Transient(Menu::CherryPick)),
         ("P", Transient(Menu::Push)),
         ("F", Transient(Menu::Pull)),
         ("f", Transient(Menu::Fetch)),

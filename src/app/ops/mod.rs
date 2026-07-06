@@ -5,6 +5,7 @@
 //! each of the two matches below. `App::dispatch` never grows.
 
 mod branch;
+mod cherry_pick;
 mod commit;
 mod log;
 mod merge;
@@ -14,7 +15,8 @@ mod remote;
 use crate::command::Menu;
 use crate::ui::input::InputState;
 use crate::ui::transient::{
-    menu_def, TransientAction, TransientState, MERGE_IN_PROGRESS, REBASE_IN_PROGRESS,
+    menu_def, TransientAction, TransientState, CHERRY_PICK_IN_PROGRESS, MERGE_IN_PROGRESS,
+    REBASE_IN_PROGRESS,
 };
 
 use super::App;
@@ -26,6 +28,7 @@ impl App {
         let def = match menu {
             Menu::Merge if self.merging() => &MERGE_IN_PROGRESS,
             Menu::Rebase if self.rebasing() => &REBASE_IN_PROGRESS,
+            Menu::CherryPick if self.cherry_picking() => &CHERRY_PICK_IN_PROGRESS,
             _ => menu_def(menu),
         };
         self.transient = Some(TransientState::new(def));
@@ -42,6 +45,8 @@ impl App {
             | MergeInto | MergeAbort => self.merge_action(action, args),
             RebaseUpstream | RebaseElsewhere | RebaseInteractive | RebaseContinue | RebaseSkip
             | RebaseEditTodo | RebaseAbort => self.rebase_action(action, args),
+            CherryPick | CherryPickApply | CherryPickContinue | CherryPickSkip
+            | CherryPickAbort => self.cherry_pick_action(action, args),
             LogCurrent | LogAll | LogOther => self.log_action(action, args),
         }
     }
@@ -50,10 +55,30 @@ impl App {
     /// the continuation writes the value back into `transient.values` (empty
     /// clears the argument).
     pub(in crate::app) fn prompt_transient_arg(&mut self, flag: &'static str, desc: &'static str) {
-        self.open_input_state(InputState::plain(desc), true, move |app, value| {
-            if let Some(t) = app.transient.as_mut() {
-                t.set_value(flag, value);
-            }
-        });
+        let candidates = self.transient_arg_candidates(flag);
+        self.open_input_state(
+            InputState::picker(desc, candidates),
+            true,
+            move |app, value| {
+                if let Some(t) = app.transient.as_mut() {
+                    t.set_value(flag, value);
+                }
+            },
+        );
+    }
+
+    /// Candidates for a transient value-argument's prompt. Free-text
+    /// arguments get an empty list — the picker accepts typed text either
+    /// way.
+    fn transient_arg_candidates(&self, flag: &str) -> Vec<String> {
+        let list = |items: &[&str]| items.iter().map(|s| s.to_string()).collect();
+        match flag {
+            // The merge strategies git ships with.
+            "--strategy=" => list(&["resolve", "recursive", "octopus", "ours", "subtree"]),
+            // Merge parents to replay relative to — almost always one of
+            // the two sides; typed input covers octopus merges.
+            "--mainline=" => list(&["1", "2"]),
+            _ => Vec::new(),
+        }
     }
 }

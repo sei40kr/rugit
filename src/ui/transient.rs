@@ -40,6 +40,16 @@ pub enum TransientAction {
     MergeInto,
     /// Abort the in-progress merge (after a y/n confirm).
     MergeAbort,
+    /// Opens a picker over revisions, then cherry-picks onto HEAD.
+    CherryPick,
+    /// Cherry-pick without committing.
+    CherryPickApply,
+    /// Continue the in-progress cherry-pick (may open $EDITOR).
+    CherryPickContinue,
+    /// Skip the commit that stopped the in-progress cherry-pick.
+    CherryPickSkip,
+    /// Abort the in-progress cherry-pick (after a y/n confirm).
+    CherryPickAbort,
     /// Rebase the current branch onto its upstream.
     RebaseUpstream,
     /// Opens a picker over branches, then rebases onto the chosen one.
@@ -442,6 +452,91 @@ pub static REBASE_IN_PROGRESS: TransientDef = TransientDef {
     }],
 };
 
+// Pick or apply commits onto HEAD. `--ff` starts enabled and is
+// incompatible with `-x`: a fast-forward reuses the commit unchanged, so
+// there is no new message to reference the cherry in.
+pub static CHERRY_PICK: TransientDef = TransientDef {
+    title: "Cherry-pick",
+    defaults: &["--ff"],
+    incompatible: &[&["--ff", "-x"]],
+    groups: &[
+        GroupDef {
+            title: "Arguments",
+            items: &[
+                Item::Arg {
+                    key: "-m",
+                    flag: "--mainline=",
+                    desc: "Replay merge relative to parent",
+                },
+                Item::Arg {
+                    key: "=s",
+                    flag: "--strategy=",
+                    desc: "Strategy",
+                },
+                Item::Switch {
+                    key: "-F",
+                    flag: "--ff",
+                    desc: "Attempt fast-forward",
+                },
+                Item::Switch {
+                    key: "-x",
+                    flag: "-x",
+                    desc: "Reference cherry in commit message",
+                },
+                Item::Switch {
+                    key: "-e",
+                    flag: "--edit",
+                    desc: "Edit commit messages",
+                },
+            ],
+        },
+        GroupDef {
+            title: "Actions",
+            items: &[
+                Item::Action {
+                    key: "A",
+                    desc: "Pick",
+                    action: TransientAction::CherryPick,
+                },
+                Item::Action {
+                    key: "a",
+                    desc: "Apply",
+                    action: TransientAction::CherryPickApply,
+                },
+            ],
+        },
+    ],
+};
+
+/// Shown instead of `CHERRY_PICK` while a cherry-pick is stopped
+/// (CHERRY_PICK_HEAD exists): the sequencer can only continue, skip or
+/// abort.
+pub static CHERRY_PICK_IN_PROGRESS: TransientDef = TransientDef {
+    title: "Cherry-pick (in progress)",
+    defaults: &[],
+    incompatible: &[],
+    groups: &[GroupDef {
+        title: "Actions",
+        items: &[
+            Item::Action {
+                key: "A",
+                desc: "Continue",
+                action: TransientAction::CherryPickContinue,
+            },
+            Item::Action {
+                key: "s",
+                desc: "Skip this commit",
+                action: TransientAction::CherryPickSkip,
+            },
+            Item::Action {
+                key: "a",
+                desc: "Abort cherry-pick",
+                action: TransientAction::CherryPickAbort,
+            },
+        ],
+    }],
+};
+
 pub static PULL: TransientDef = TransientDef {
     title: "Pull",
     defaults: &[],
@@ -579,6 +674,7 @@ pub fn menu_def(menu: Menu) -> &'static TransientDef {
         Menu::Branch => &BRANCH,
         Menu::Merge => &MERGE,
         Menu::Rebase => &REBASE,
+        Menu::CherryPick => &CHERRY_PICK,
         Menu::Push => &PUSH,
         Menu::Pull => &PULL,
         Menu::Fetch => &FETCH,
@@ -889,6 +985,46 @@ mod tests {
         );
         // Starting a new rebase is not offered while one is in progress.
         assert_eq!(st.on_key(&key('u')), TransientResult::Unbound);
+    }
+
+    #[test]
+    fn cherry_pick_menu_defaults_to_ff() {
+        let mut st = TransientState::new(&CHERRY_PICK);
+        match st.on_key(&key('A')) {
+            TransientResult::Invoke(TransientAction::CherryPick, args) => {
+                assert_eq!(args, vec!["--ff"]);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cherry_pick_ff_and_record_origin_are_mutually_exclusive() {
+        let mut st = TransientState::new(&CHERRY_PICK);
+        // Enabling -x clears the default --ff via the incompatible pair.
+        st.on_key(&key('-'));
+        st.on_key(&key('x'));
+        match st.on_key(&key('A')) {
+            TransientResult::Invoke(TransientAction::CherryPick, args) => {
+                assert_eq!(args, vec!["-x"]);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn in_progress_cherry_pick_menu_only_manages_the_sequence() {
+        let mut st = TransientState::new(&CHERRY_PICK_IN_PROGRESS);
+        assert_eq!(
+            st.on_key(&key('A')),
+            TransientResult::Invoke(TransientAction::CherryPickContinue, vec![])
+        );
+        assert_eq!(
+            st.on_key(&key('a')),
+            TransientResult::Invoke(TransientAction::CherryPickAbort, vec![])
+        );
+        // Starting a new cherry-pick is not offered while one is stopped.
+        assert_eq!(st.on_key(&key('e')), TransientResult::Unbound);
     }
 
     #[test]

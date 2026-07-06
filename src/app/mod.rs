@@ -291,6 +291,26 @@ impl App {
         self.open_input_state(InputState::picker(prompt, candidates), false, on_submit);
     }
 
+    /// Picker over a closed set: only a listed candidate can be submitted,
+    /// and an empty set bails out with `empty_message` instead of opening.
+    fn open_strict_picker(
+        &mut self,
+        prompt: impl Into<String>,
+        candidates: Vec<String>,
+        empty_message: &str,
+        on_submit: impl FnOnce(&mut App, String) + 'static,
+    ) {
+        if candidates.is_empty() {
+            self.message = Some(empty_message.to_string());
+            return;
+        }
+        self.open_input_state(
+            InputState::strict_picker(prompt, candidates),
+            false,
+            on_submit,
+        );
+    }
+
     /// Open a prepared input. `allow_empty` lets empty text through to the
     /// continuation (meaning "clear" for variable/argument prompts);
     /// otherwise an empty submit aborts with a message.

@@ -13,6 +13,7 @@ mod rebase;
 mod remote;
 mod reset;
 mod revert;
+mod stash;
 
 use crate::command::Menu;
 use crate::ui::input::InputState;
@@ -55,6 +56,9 @@ impl App {
             }
             ResetMixed | ResetSoft | ResetHard | ResetKeep | ResetIndex | ResetWorktree => {
                 self.reset_action(action)
+            }
+            StashBoth | StashIndex | StashKeepIndex | StashApply | StashPop | StashDrop => {
+                self.stash_action(action, args)
             }
             LogCurrent | LogAll | LogOther => self.log_action(action, args),
         }

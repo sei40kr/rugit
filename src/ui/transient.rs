@@ -87,6 +87,18 @@ pub enum TransientAction {
     /// Reset only the worktree to a revision (HEAD and index stay,
     /// confirmed).
     ResetWorktree,
+    /// Stash the worktree and index (`git stash push`).
+    StashBoth,
+    /// Stash only staged changes (`git stash push --staged`).
+    StashIndex,
+    /// Stash everything but leave the index applied (`--keep-index`).
+    StashKeepIndex,
+    /// Opens a picker over stashes, then applies the chosen one.
+    StashApply,
+    /// Like `StashApply`, but drops the stash afterwards.
+    StashPop,
+    /// Drop a stash (after a y/n confirm).
+    StashDrop,
     /// Opens a picker over local and remote branches.
     Checkout,
     /// Opens a minibuffer for the new branch name, then checks it out.
@@ -680,6 +692,70 @@ pub static RESET: TransientDef = TransientDef {
     }],
 };
 
+// Stash away index/worktree changes and apply/pop/drop existing stashes.
+pub static STASH: TransientDef = TransientDef {
+    title: "Stash",
+    defaults: &[],
+    incompatible: &[],
+    groups: &[
+        GroupDef {
+            title: "Arguments",
+            items: &[
+                Item::Switch {
+                    key: "-u",
+                    flag: "--include-untracked",
+                    desc: "Also save untracked files",
+                },
+                Item::Switch {
+                    key: "-a",
+                    flag: "--all",
+                    desc: "Also save untracked and ignored files",
+                },
+            ],
+        },
+        GroupDef {
+            title: "Stash",
+            items: &[
+                Item::Action {
+                    key: "z",
+                    desc: "both (index and worktree)",
+                    action: TransientAction::StashBoth,
+                },
+                Item::Action {
+                    key: "i",
+                    desc: "index (staged changes only)",
+                    action: TransientAction::StashIndex,
+                },
+                Item::Action {
+                    key: "x",
+                    desc: "keeping index",
+                    action: TransientAction::StashKeepIndex,
+                },
+            ],
+        },
+        GroupDef {
+            title: "Use",
+            items: &[
+                Item::Action {
+                    key: "a",
+                    desc: "Apply",
+                    action: TransientAction::StashApply,
+                },
+                Item::Action {
+                    key: "p",
+                    desc: "Pop",
+                    action: TransientAction::StashPop,
+                },
+                Item::Action {
+                    key: "k",
+                    desc: "Drop",
+                    action: TransientAction::StashDrop,
+                },
+            ],
+        },
+    ],
+};
+
 pub static PULL: TransientDef = TransientDef {
     title: "Pull",
     defaults: &[],
@@ -820,6 +896,7 @@ pub fn menu_def(menu: Menu) -> &'static TransientDef {
         Menu::CherryPick => &CHERRY_PICK,
         Menu::Revert => &REVERT,
         Menu::Reset => &RESET,
+        Menu::Stash => &STASH,
         Menu::Push => &PUSH,
         Menu::Pull => &PULL,
         Menu::Fetch => &FETCH,

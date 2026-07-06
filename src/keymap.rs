@@ -331,6 +331,7 @@ pub fn default_keymaps() -> Keymaps {
         // are adapted to vim-style bindings, where V selects lines.
         ("_", Transient(Menu::Revert)),
         ("O", Transient(Menu::Reset)),
+        ("Z", Transient(Menu::Stash)),
         ("P", Transient(Menu::Push)),
         ("F", Transient(Menu::Pull)),
         ("f", Transient(Menu::Fetch)),

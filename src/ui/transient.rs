@@ -170,10 +170,23 @@ pub enum TransientAction {
     BranchConfigure,
     /// Log the current branch (HEAD).
     LogCurrent,
+    /// Log the current branch together with its upstream and push-remote
+    /// counterparts.
+    LogRelated,
+    /// Log all local branches (`--branches`).
+    LogLocalBranches,
+    /// Log all local and remote branches (`--branches --remotes`).
+    LogAllBranches,
     /// Log all refs (`--all`).
     LogAll,
     /// Opens a picker over refs, then logs the chosen one.
     LogOther,
+    /// Reflog of the current branch.
+    ReflogCurrent,
+    /// Opens a picker over refs, then shows the chosen one's reflog.
+    ReflogOther,
+    /// Reflog of HEAD itself.
+    ReflogHead,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1279,6 +1292,11 @@ pub static FETCH: TransientDef = TransientDef {
     ],
 };
 
+// Log revisions and reflogs with search and limit arguments. The
+// file-limiting arguments (`--`, `--follow`), the commit-order switches
+// and shortlog are omitted: our field-format parser cannot render them.
+// --graph is intentionally omitted too: it prefixes graph art to each
+// line, which the parser can't read.
 pub static LOG: TransientDef = TransientDef {
     title: "Log",
     defaults: &[],
@@ -1287,8 +1305,6 @@ pub static LOG: TransientDef = TransientDef {
         GroupDef {
             title: "Arguments",
             items: &[
-                // --graph is intentionally omitted: it prefixes graph art to
-                // each line, which our `--format` field parser can't read.
                 Item::Arg {
                     key: "-n",
                     flag: "--max-count=",
@@ -1302,42 +1318,82 @@ pub static LOG: TransientDef = TransientDef {
                 Item::Arg {
                     key: "-F",
                     flag: "--grep=",
-                    desc: "Search commit messages",
+                    desc: "Search messages",
+                },
+                Item::Arg {
+                    key: "-G",
+                    flag: "-G",
+                    desc: "Search changes",
+                },
+                Item::Arg {
+                    key: "-S",
+                    flag: "-S",
+                    desc: "Search occurrences",
+                },
+                Item::Arg {
+                    key: "-L",
+                    flag: "-L",
+                    desc: "Trace line evolution",
                 },
                 Item::Switch {
-                    key: "-m",
-                    flag: "--no-merges",
-                    desc: "Omit merge commits",
-                },
-                Item::Switch {
-                    key: "-r",
-                    flag: "--reverse",
-                    desc: "Show oldest first",
-                },
-                Item::Switch {
-                    key: "-f",
-                    flag: "--first-parent",
-                    desc: "Follow first parent only",
+                    key: "-D",
+                    flag: "--simplify-by-decoration",
+                    desc: "Simplify by decoration",
                 },
             ],
         },
         GroupDef {
-            title: "Actions",
+            title: "Log",
             items: &[
                 Item::Action {
                     key: "l",
-                    desc: "Log current branch",
+                    desc: "current",
                     action: TransientAction::LogCurrent,
                 },
                 Item::Action {
                     key: "o",
-                    desc: "Log other branch/revision",
+                    desc: "other",
                     action: TransientAction::LogOther,
                 },
                 Item::Action {
+                    key: "u",
+                    desc: "related",
+                    action: TransientAction::LogRelated,
+                },
+                Item::Action {
+                    key: "L",
+                    desc: "local branches",
+                    action: TransientAction::LogLocalBranches,
+                },
+                Item::Action {
+                    key: "b",
+                    desc: "all branches",
+                    action: TransientAction::LogAllBranches,
+                },
+                Item::Action {
                     key: "a",
-                    desc: "Log all references",
+                    desc: "all references",
                     action: TransientAction::LogAll,
+                },
+            ],
+        },
+        GroupDef {
+            title: "Reflog",
+            items: &[
+                Item::Action {
+                    key: "r",
+                    desc: "current",
+                    action: TransientAction::ReflogCurrent,
+                },
+                Item::Action {
+                    key: "O",
+                    desc: "other",
+                    action: TransientAction::ReflogOther,
+                },
+                Item::Action {
+                    key: "H",
+                    desc: "HEAD",
+                    action: TransientAction::ReflogHead,
                 },
             ],
         },
@@ -1659,10 +1715,10 @@ mod tests {
         st.set_value("--max-count=", "50".into());
         // A boolean switch alongside it.
         st.on_key(&key('-'));
-        st.on_key(&key('m'));
+        st.on_key(&key('D'));
         match st.on_key(&key('l')) {
             TransientResult::Invoke(TransientAction::LogCurrent, args) => {
-                assert_eq!(args, vec!["--no-merges", "--max-count=50"]);
+                assert_eq!(args, vec!["--simplify-by-decoration", "--max-count=50"]);
             }
             other => panic!("unexpected: {other:?}"),
         }

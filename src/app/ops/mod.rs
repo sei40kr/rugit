@@ -274,7 +274,8 @@ impl App {
             RemoteConfigure | RemoteAdd | RemoteRename | RemoteRemove | RemotePrune => {
                 self.remote_menu_action(action, args)
             }
-            LogCurrent | LogAll | LogOther => self.log_action(action, args),
+            LogCurrent | LogRelated | LogLocalBranches | LogAllBranches | LogAll | LogOther
+            | ReflogCurrent | ReflogOther | ReflogHead => self.log_action(action, args),
         }
     }
 
@@ -318,6 +319,8 @@ impl App {
             "--mainline=" => list(&["1", "2"]),
             // Secret keys gpg can sign with.
             "--local-user=" | "--gpg-sign=" => self.list_gpg_signing_keys(),
+            // Recent commit authors.
+            "--author=" => self.list_recent_authors(),
             _ => Vec::new(),
         }
     }

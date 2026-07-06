@@ -11,6 +11,7 @@ mod log;
 mod merge;
 mod rebase;
 mod remote;
+mod reset;
 mod revert;
 
 use crate::command::Menu;
@@ -51,6 +52,9 @@ impl App {
             | CherryPickAbort => self.cherry_pick_action(action, args),
             Revert | RevertNoCommit | RevertContinue | RevertSkip | RevertAbort => {
                 self.revert_action(action, args)
+            }
+            ResetMixed | ResetSoft | ResetHard | ResetKeep | ResetIndex | ResetWorktree => {
+                self.reset_action(action)
             }
             LogCurrent | LogAll | LogOther => self.log_action(action, args),
         }

@@ -74,6 +74,19 @@ pub enum TransientAction {
     RebaseEditTodo,
     /// Abort the in-progress rebase (after a y/n confirm).
     RebaseAbort,
+    /// Reset HEAD and the index to a revision (`--mixed`).
+    ResetMixed,
+    /// Reset only HEAD to a revision (`--soft`).
+    ResetSoft,
+    /// Reset HEAD, index and worktree to a revision (`--hard`, confirmed).
+    ResetHard,
+    /// Reset HEAD and the index, keeping local changes (`--keep`).
+    ResetKeep,
+    /// Reset only the index to a revision (HEAD and worktree stay).
+    ResetIndex,
+    /// Reset only the worktree to a revision (HEAD and index stay,
+    /// confirmed).
+    ResetWorktree,
     /// Opens a picker over local and remote branches.
     Checkout,
     /// Opens a minibuffer for the new branch name, then checks it out.
@@ -625,6 +638,48 @@ pub static REVERT_IN_PROGRESS: TransientDef = TransientDef {
     }],
 };
 
+// Move HEAD, the index and/or the worktree to a picked revision.
+pub static RESET: TransientDef = TransientDef {
+    title: "Reset",
+    defaults: &[],
+    incompatible: &[],
+    groups: &[GroupDef {
+        title: "Reset",
+        items: &[
+            Item::Action {
+                key: "m",
+                desc: "mixed    (HEAD and index)",
+                action: TransientAction::ResetMixed,
+            },
+            Item::Action {
+                key: "s",
+                desc: "soft     (HEAD only)",
+                action: TransientAction::ResetSoft,
+            },
+            Item::Action {
+                key: "h",
+                desc: "hard     (HEAD, index and worktree)",
+                action: TransientAction::ResetHard,
+            },
+            Item::Action {
+                key: "k",
+                desc: "keep     (HEAD and index, keeping uncommitted)",
+                action: TransientAction::ResetKeep,
+            },
+            Item::Action {
+                key: "i",
+                desc: "index    (only)",
+                action: TransientAction::ResetIndex,
+            },
+            Item::Action {
+                key: "w",
+                desc: "worktree (only)",
+                action: TransientAction::ResetWorktree,
+            },
+        ],
+    }],
+};
+
 pub static PULL: TransientDef = TransientDef {
     title: "Pull",
     defaults: &[],
@@ -764,6 +819,7 @@ pub fn menu_def(menu: Menu) -> &'static TransientDef {
         Menu::Rebase => &REBASE,
         Menu::CherryPick => &CHERRY_PICK,
         Menu::Revert => &REVERT,
+        Menu::Reset => &RESET,
         Menu::Push => &PUSH,
         Menu::Pull => &PULL,
         Menu::Fetch => &FETCH,

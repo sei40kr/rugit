@@ -1,9 +1,9 @@
 //! Minibuffer input and picker — a single component with two modes:
 //! - plain input (`candidates` empty): free text, e.g. a new branch name
-//! - picker: text filters `candidates` (case-insensitive fuzzy subsequence,
-//!   best match first), UP/DOWN (or C-p/C-n) move the selection, TAB
-//!   completes, RET submits the selected candidate (or the raw text when
-//!   nothing matches).
+//! - picker: text filters `candidates` (case-insensitive fuzzy matching via
+//!   `fuzzy-matcher`, best match first), UP/DOWN (or C-p/C-n) move the
+//!   selection, TAB completes, RET submits the selected candidate (or the
+//!   raw text when nothing matches).
 
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
@@ -116,7 +116,6 @@ impl InputState {
     /// Like `filtered`, but each candidate carries the char indices matched
     /// by the current text, for highlighting.
     fn matches(&self) -> Vec<(&str, Vec<usize>)> {
-        // Empty input: everything matches, in the original order.
         if self.text.is_empty() {
             return self
                 .candidates
@@ -134,7 +133,7 @@ impl InputState {
                     .map(|(score, indices)| (score, c.as_str(), indices))
             })
             .collect();
-        scored.sort_by_key(|s| std::cmp::Reverse(s.0));
+        scored.sort_by_key(|&(score, _, _)| std::cmp::Reverse(score));
         scored.into_iter().map(|(_, c, ix)| (c, ix)).collect()
     }
 
@@ -398,23 +397,68 @@ mod tests {
     }
 
     #[test]
-    fn matching_is_case_insensitive_with_char_indices() {
+    fn picker_empty_text_lists_all_candidates_in_order() {
+        let st = InputState::picker(
+            "Checkout",
+            InputPurpose::CheckoutRev,
+            vec!["main".into(), "develop".into(), "feature/a".into()],
+        );
+        assert_eq!(st.filtered(), vec!["main", "develop", "feature/a"]);
+        assert!(st.matches().iter().all(|(_, ix)| ix.is_empty()));
+    }
+
+    #[test]
+    fn picker_match_indices_are_ascending_char_positions() {
+        // `highlight_spans` walks the indices front to back, so the matcher
+        // must hand them over sorted.
+        let st = InputState {
+            text: "fb".into(),
+            ..InputState::picker(
+                "Checkout",
+                InputPurpose::CheckoutRev,
+                vec!["feature/b".into()],
+            )
+        };
+        let matches = st.matches();
+        assert!(matches[0].1.windows(2).all(|w| w[0] < w[1]));
+    }
+
+    #[test]
+    fn picker_match_ignores_case_both_ways() {
+        // Forced ignore-case (not smart-case): an uppercase query still
+        // matches lowercase candidates.
+        let st = InputState {
+            text: "FEAT".into(),
+            ..InputState::picker(
+                "Checkout",
+                InputPurpose::CheckoutRev,
+                vec!["feature/a".into(), "main".into()],
+            )
+        };
+        assert_eq!(st.filtered(), vec!["feature/a"]);
+    }
+
+    #[test]
+    fn picker_match_is_case_insensitive_and_multibyte_safe() {
         let st = InputState {
             text: "fa".into(),
             ..InputState::picker(
                 "Checkout",
                 InputPurpose::CheckoutRev,
-                vec!["Feature/A".into(), "日本語".into()],
+                vec!["Feature/A".into(), "docs".into()],
             )
         };
-        assert_eq!(st.filtered(), vec!["Feature/A"]);
+        let matches = st.matches();
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].0, "Feature/A");
+        assert!(!matches[0].1.is_empty());
 
         let st = InputState {
             text: "本語".into(),
-            ..st
+            ..InputState::picker("Checkout", InputPurpose::CheckoutRev, vec!["日本語".into()])
         };
-        let matches = st.matches();
-        assert_eq!(matches, vec![("日本語", vec![1, 2])]); // char indices, multibyte-safe
+        // Highlight indices are char positions, multibyte-safe.
+        assert_eq!(st.matches()[0].1, vec![1, 2]);
     }
 
     #[test]

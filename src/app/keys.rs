@@ -76,6 +76,7 @@ impl App {
                     self.message = Some("key not bound in this menu".into());
                 }
                 TransientResult::Prompt { flag, desc } => self.prompt_transient_arg(flag, desc),
+                TransientResult::EditVariable { var } => self.edit_transient_variable(var),
                 TransientResult::Invoke(action, args) => {
                     self.transient = None;
                     self.invoke_transient(action, args);

@@ -138,14 +138,31 @@ pub enum Item {
         desc: &'static str,
         action: TransientAction,
     },
+    /// A git config variable: shows the current value, and selecting it
+    /// prompts for a new one (empty unsets). `{}` in
+    /// `var` is replaced by the transient's scope (a branch or remote
+    /// name); scoped variables are hidden while there is no scope.
+    Variable {
+        key: &'static str,
+        var: &'static str,
+    },
 }
 
 impl Item {
     fn key(&self) -> &'static str {
         match self {
-            Item::Switch { key, .. } | Item::Arg { key, .. } | Item::Action { key, .. } => key,
+            Item::Switch { key, .. }
+            | Item::Arg { key, .. }
+            | Item::Action { key, .. }
+            | Item::Variable { key, .. } => key,
         }
     }
+}
+
+/// Resolve a variable template against the transient's scope:
+/// `remote.{}.url` + "origin" → `remote.origin.url`.
+pub fn resolve_var(var: &str, scope: &str) -> String {
+    var.replace("{}", scope)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -971,6 +988,20 @@ pub struct TransientState {
     pub enabled: BTreeSet<&'static str>,
     /// Value arguments (`--author=` → "ada"), set via a value prompt.
     pub values: BTreeMap<&'static str, String>,
+    /// What `{}` in variable items resolves to (a branch or remote name).
+    pub scope: Option<String>,
+    /// Current values of the definition's variable items, keyed by the
+    /// unresolved template; absent means unset. The app loads these when
+    /// the menu opens and after each edit.
+    pub variables: BTreeMap<&'static str, String>,
+    /// Variables with a fixed set of values: all choices render inline
+    /// and the key cycles through them instead of prompting. Loaded by
+    /// the app.
+    pub var_choices: BTreeMap<&'static str, Vec<String>>,
+    /// The trailing `[...]` segment for a choice variable — the fallback
+    /// variable's current value ("pull.rebase:true") or the built-in
+    /// default ("default:false") — highlighted while the variable is unset.
+    pub var_fallbacks: BTreeMap<&'static str, String>,
     pub pending: String,
 }
 
@@ -984,6 +1015,8 @@ pub enum TransientResult {
         flag: &'static str,
         desc: &'static str,
     },
+    /// Prompt for a new value of this config variable; the menu stays open.
+    EditVariable { var: &'static str },
     /// Run this action with these collected CLI flags; menu closes.
     Invoke(TransientAction, Vec<String>),
     /// Close without running anything.
@@ -998,6 +1031,10 @@ impl TransientState {
             def,
             enabled: def.defaults.iter().copied().collect(),
             values: BTreeMap::new(),
+            scope: None,
+            variables: BTreeMap::new(),
+            var_choices: BTreeMap::new(),
+            var_fallbacks: BTreeMap::new(),
             pending: String::new(),
         }
     }
@@ -1009,6 +1046,24 @@ impl TransientState {
         } else {
             self.values.insert(flag, value);
         }
+    }
+
+    /// Record a variable's (re-read) value; `None` means unset.
+    pub fn set_variable(&mut self, var: &'static str, value: Option<String>) {
+        match value {
+            Some(v) => {
+                self.variables.insert(var, v);
+            }
+            None => {
+                self.variables.remove(var);
+            }
+        }
+    }
+
+    /// Scoped variables only make sense once there is a scope.
+    fn item_visible(&self, item: &Item) -> bool {
+        !matches!(item, Item::Variable { var, .. }
+            if var.contains("{}") && self.scope.is_none())
     }
 
     pub fn args(&self) -> Vec<String> {
@@ -1035,7 +1090,13 @@ impl TransientState {
         };
         self.pending.push(c);
 
-        let items = || self.def.groups.iter().flat_map(|g| g.items.iter());
+        let items = || {
+            self.def
+                .groups
+                .iter()
+                .flat_map(|g| g.items.iter())
+                .filter(|i| self.item_visible(i))
+        };
         if let Some(item) = items().find(|i| i.key() == self.pending) {
             self.pending.clear();
             match *item {
@@ -1056,6 +1117,7 @@ impl TransientState {
                 }
                 Item::Arg { flag, desc, .. } => TransientResult::Prompt { flag, desc },
                 Item::Action { action, .. } => TransientResult::Invoke(action, self.args()),
+                Item::Variable { var, .. } => TransientResult::EditVariable { var },
             }
         } else if items().any(|i| i.key().starts_with(&self.pending)) {
             TransientResult::Consumed
@@ -1069,11 +1131,21 @@ impl TransientState {
     pub fn render_lines(&self, t: &Theme) -> Vec<Line<'static>> {
         let mut out = Vec::new();
         for group in self.def.groups {
+            // A group can lose all its items (scoped variables without a
+            // scope); drop its title too.
+            let items: Vec<&Item> = group
+                .items
+                .iter()
+                .filter(|i| self.item_visible(i))
+                .collect();
+            if items.is_empty() {
+                continue;
+            }
             out.push(Line::from(Span::styled(
                 group.title.to_string(),
                 Style::new().fg(t.menu_title).add_modifier(Modifier::BOLD),
             )));
-            for item in group.items {
+            for item in items {
                 match *item {
                     Item::Switch { key, flag, desc } => {
                         let on = self.enabled.contains(flag);
@@ -1107,6 +1179,42 @@ impl TransientState {
                             Span::styled(format!("{key:<4}"), Style::new().fg(t.key)),
                             Span::raw(desc.to_string()),
                         ]));
+                    }
+                    Item::Variable { key, var } => {
+                        let name = resolve_var(var, self.scope.as_deref().unwrap_or(""));
+                        let mut spans = vec![
+                            Span::raw(" "),
+                            Span::styled(format!("{key:<4}"), Style::new().fg(t.key)),
+                            Span::raw(format!("{name:<32}")),
+                        ];
+                        let current = self.variables.get(var);
+                        let on = Style::new().fg(t.command).bold();
+                        let off = Style::new().dim();
+                        if let Some(choices) = self.var_choices.get(var) {
+                            // All choices inline, the active one
+                            // highlighted ([true|false|default:false]).
+                            spans.push(Span::styled("[".to_string(), off));
+                            for (i, choice) in choices.iter().enumerate() {
+                                if i > 0 {
+                                    spans.push(Span::styled("|".to_string(), off));
+                                }
+                                let style = if current == Some(choice) { on } else { off };
+                                spans.push(Span::styled(choice.clone(), style));
+                            }
+                            if let Some(fallback) = self.var_fallbacks.get(var) {
+                                spans.push(Span::styled("|".to_string(), off));
+                                let style = if current.is_none() { on } else { off };
+                                spans.push(Span::styled(fallback.clone(), style));
+                            }
+                            spans.push(Span::styled("]".to_string(), off));
+                        } else {
+                            let (shown, style) = match current {
+                                Some(v) => (v.clone(), on),
+                                None => ("unset".to_string(), off),
+                            };
+                            spans.push(Span::styled(shown, style));
+                        }
+                        out.push(Line::from(spans));
                     }
                 }
             }
@@ -1332,6 +1440,66 @@ mod tests {
         );
         // Starting a new revert is not offered while one is stopped.
         assert_eq!(st.on_key(&key('v')), TransientResult::Unbound);
+    }
+
+    #[test]
+    fn variables_hide_without_scope_and_edit_with_one() {
+        static DEF: TransientDef = TransientDef {
+            title: "T",
+            defaults: &[],
+            incompatible: &[],
+            groups: &[GroupDef {
+                title: "Variables",
+                items: &[Item::Variable {
+                    key: "u",
+                    var: "remote.{}.url",
+                }],
+            }],
+        };
+        let mut st = TransientState::new(&DEF);
+        // Without a scope the variable is hidden and its key unbound.
+        assert_eq!(st.on_key(&key('u')), TransientResult::Unbound);
+        assert!(st.render_lines(&Theme::default()).is_empty());
+        st.scope = Some("origin".into());
+        assert_eq!(
+            st.on_key(&key('u')),
+            TransientResult::EditVariable {
+                var: "remote.{}.url"
+            }
+        );
+        assert!(!st.render_lines(&Theme::default()).is_empty());
+    }
+
+    #[test]
+    fn choice_variable_renders_all_choices() {
+        static DEF: TransientDef = TransientDef {
+            title: "T",
+            defaults: &[],
+            incompatible: &[],
+            groups: &[GroupDef {
+                title: "Variables",
+                items: &[Item::Variable {
+                    key: "r",
+                    var: "branch.{}.rebase",
+                }],
+            }],
+        };
+        let mut st = TransientState::new(&DEF);
+        st.scope = Some("main".into());
+        st.var_choices
+            .insert("branch.{}.rebase", vec!["true".into(), "false".into()]);
+        st.var_fallbacks
+            .insert("branch.{}.rebase", "default:false".into());
+        st.variables.insert("branch.{}.rebase", "true".into());
+        let lines = st.render_lines(&Theme::default());
+        let text: String = lines[1].spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(text.contains("[true|false|default:false]"), "got {text:?}");
+    }
+
+    #[test]
+    fn resolve_var_substitutes_the_scope() {
+        assert_eq!(resolve_var("remote.{}.url", "origin"), "remote.origin.url");
+        assert_eq!(resolve_var("pull.rebase", "main"), "pull.rebase");
     }
 
     #[test]

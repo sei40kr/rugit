@@ -199,7 +199,7 @@ pub enum Item {
     },
     /// A flag that takes a value (e.g. `--author=`). Selecting it prompts for
     /// the value; `flag` must end so the value appends directly (`--author=`,
-    /// `--max-count=`). Set to empty to clear it.
+    /// `--max-count=`). Selecting it again while set clears it.
     Arg {
         key: &'static str,
         flag: &'static str,
@@ -1558,7 +1558,15 @@ impl TransientState {
                     }
                     TransientResult::Consumed
                 }
-                Item::Arg { flag, desc, .. } => TransientResult::Prompt { flag, desc },
+                Item::Arg { flag, desc, .. } => {
+                    // A set option clears on re-invocation, like a switch
+                    // toggling off; only an unset one prompts for a value.
+                    if self.values.remove(flag).is_some() {
+                        TransientResult::Consumed
+                    } else {
+                        TransientResult::Prompt { flag, desc }
+                    }
+                }
                 Item::Action { action, .. } => TransientResult::Invoke(action, self.args()),
                 Item::Variable { var, .. } => TransientResult::EditVariable { var },
             }
@@ -1722,6 +1730,21 @@ mod tests {
             }
             other => panic!("unexpected: {other:?}"),
         }
+    }
+
+    #[test]
+    fn value_arg_clears_on_second_invocation() {
+        let mut st = TransientState::new(&LOG);
+        st.on_key(&key('-'));
+        assert!(matches!(
+            st.on_key(&key('A')),
+            TransientResult::Prompt { .. }
+        ));
+        st.set_value("--author=", "ada".into());
+        // Re-invoking a set option clears it instead of prompting.
+        st.on_key(&key('-'));
+        assert_eq!(st.on_key(&key('A')), TransientResult::Consumed);
+        assert!(st.args().is_empty());
     }
 
     #[test]

@@ -317,6 +317,8 @@ impl App {
             // Merge parents to replay relative to — almost always one of
             // the two sides; typed input covers octopus merges.
             "--mainline=" => list(&["1", "2"]),
+            // git's diff algorithms (git-diff(1)).
+            "-Xdiff-algorithm=" => list(&["histogram", "minimal", "patience", "myers"]),
             // Secret keys gpg can sign with.
             "--local-user=" | "--gpg-sign=" => self.list_gpg_signing_keys(),
             // Recent commit authors.

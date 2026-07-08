@@ -66,6 +66,28 @@ pub struct Confirm {
     pub action: PendingAction,
 }
 
+/// A minibuffer continuation: runs once with the submitted text.
+type SubmitFn = Box<dyn FnOnce(&mut App, String)>;
+
+/// The open minibuffer/picker plus what happens to the submitted text.
+/// Multi-step flows (rename: pick the branch, then ask the new name) chain
+/// by opening the next input from inside the previous one's continuation,
+/// carrying context as closure captures.
+pub struct InputOverlay {
+    pub state: InputState,
+    handler: InputHandler,
+}
+
+enum InputHandler {
+    /// Runs once with the submitted text; `open_input_state` composes the
+    /// empty-input policy into the closure.
+    Submit(SubmitFn),
+    /// Incremental buffer search reacts to every keystroke, not just the
+    /// final submit (see `app/search.rs`), so it stays a special case
+    /// instead of a continuation.
+    Search,
+}
+
 pub enum PendingAction {
     Git {
         desc: String,
@@ -104,7 +126,7 @@ pub struct App {
     pub scrolloff: usize,
     pub pending: Vec<KeyPress>,
     pub transient: Option<TransientState>,
-    pub input: Option<InputState>,
+    pub input: Option<InputOverlay>,
     pub confirm: Option<Confirm>,
     pub show_help: bool,
     /// Scroll offset of the help overlay; clamped to the content by render.
@@ -243,6 +265,49 @@ impl App {
             }
             Command::ProcessLog => self.open_process_log(),
         }
+    }
+
+    // ---- minibuffer / picker -------------------------------------------------
+
+    /// Open a plain minibuffer; the continuation runs once with the entered
+    /// text (never empty).
+    fn open_input(
+        &mut self,
+        prompt: impl Into<String>,
+        on_submit: impl FnOnce(&mut App, String) + 'static,
+    ) {
+        self.open_input_state(InputState::plain(prompt), false, on_submit);
+    }
+
+    /// Like `open_input`, with fuzzy-filtered candidates.
+    fn open_picker(
+        &mut self,
+        prompt: impl Into<String>,
+        candidates: Vec<String>,
+        on_submit: impl FnOnce(&mut App, String) + 'static,
+    ) {
+        self.open_input_state(InputState::picker(prompt, candidates), false, on_submit);
+    }
+
+    /// Open a prepared input. `allow_empty` lets empty text through to the
+    /// continuation (meaning "clear" for variable/argument prompts);
+    /// otherwise an empty submit aborts with a message.
+    fn open_input_state(
+        &mut self,
+        state: InputState,
+        allow_empty: bool,
+        on_submit: impl FnOnce(&mut App, String) + 'static,
+    ) {
+        self.input = Some(InputOverlay {
+            state,
+            handler: InputHandler::Submit(Box::new(move |app, value| {
+                if value.is_empty() && !allow_empty {
+                    app.message = Some("empty input".into());
+                    return;
+                }
+                on_submit(app, value);
+            })),
+        });
     }
 
     fn quit_or_pop(&mut self) {

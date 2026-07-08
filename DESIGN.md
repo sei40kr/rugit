@@ -315,10 +315,9 @@ enum Item {
 - Toggling a `Switch` mutates state and re-renders (enabled switches change
   color).
 - Selecting an `Arg` returns `Prompt { flag, desc }`; the app opens a
-  minibuffer (`InputPurpose::TransientArg(flag)`) *over* the still-open
-  transient, and the submit writes the value back into `state.values`. The
-  `flag` ends in `=` so `args()` emits a single `--author=ada` token; an empty
-  submit clears it.
+  minibuffer *over* the still-open transient whose continuation writes the
+  value back into `state.values`. The `flag` ends in `=` so `args()` emits a
+  single `--author=ada` token; an empty submit clears it.
 - Invoking an `Action` collects enabled switches + value args into a
   `Vec<String>` passed to execution (`git commit --amend --signoff`, ...).
 - `TransientAction` is a separate enum from `Command`. Commit-family actions
@@ -350,17 +349,23 @@ name), it opens an `InputState`. One component, two modes:
   raw typed text (which is how checking out a tag or SHA works).
 
 Key-resolution priority: **confirm > input > help > transient > keymap**.
-The submitted value is dispatched on `InputPurpose` (CheckoutRev /
-CreateCheckoutBranch / CreateBranch) and turned into a git invocation.
-Checkout rides `git checkout`'s DWIM (remote-tracking → create local branch,
-tag → detach).
+`InputState` is pure editing/filtering state; what the submitted text
+*means* lives with the caller. `App::open_input`/`open_picker` take a
+continuation closure that runs once with the submitted value, and
+multi-step flows (branch rename: pick the branch, then ask the new name)
+chain by opening the next input from inside the previous one's
+continuation, carrying context as captures. Checkout rides `git checkout`'s
+DWIM (remote-tracking → create local branch, tag → detach).
 
 Branch candidates come from `git branch --all --format=%(refname:short)`.
 Enumerating local refs is fast, so this is the one read done synchronously.
 
 ## 6.6 In-buffer search
 
-Incremental, isearch-style. `/` opens a minibuffer (`InputPurpose::Search`).
+Incremental, isearch-style. `/` opens a minibuffer. Search is the one
+input that reacts to every keystroke rather than just the final submit, so
+it is a dedicated overlay kind (`InputHandler::Search`) instead of a
+continuation.
 
 - **Live preview**: every keystroke updates `app.search` → all matches are
   highlighted and the cursor jumps to the first match at or after the search

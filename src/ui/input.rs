@@ -14,41 +14,6 @@ use ratatui::text::{Line, Span};
 use crate::keymap::KeyPress;
 use crate::theme::Theme;
 
-/// What the submitted value is for. The app maps these to git operations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InputPurpose {
-    CheckoutRev,
-    CreateCheckoutBranch,
-    CreateBranch,
-    /// A revision to merge headlessly (`--no-edit`).
-    MergeRev,
-    /// A revision to merge, editing the message in $EDITOR.
-    MergeEditRev,
-    /// A revision to merge with `--no-commit`, leaving the merge pending.
-    MergeNoCommitRev,
-    /// A revision to squash-merge onto the worktree/index.
-    MergeSquashRev,
-    /// A branch to merge and then delete (absorb).
-    MergeAbsorbRev,
-    /// A revision whose merge into HEAD is previewed, committing nothing.
-    MergePreviewRev,
-    /// A branch to check out and merge the current branch into, deleting
-    /// the current branch afterwards.
-    MergeIntoRev,
-    /// A revision to rebase the current branch onto.
-    RebaseOntoRev,
-    /// A revision to rebase onto interactively (todo list in $EDITOR).
-    RebaseInteractiveRev,
-    /// A branch/revision to log (from the log menu's "other").
-    LogRev,
-    /// A value for a transient value-argument (e.g. `--author=`); the flag is
-    /// carried so the submit handler knows which argument to set.
-    TransientArg(&'static str),
-    /// Incremental buffer search: the app reacts to every keystroke, not
-    /// just the final submit.
-    Search,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InputResult {
     Consumed,
@@ -56,10 +21,11 @@ pub enum InputResult {
     Submit(String),
 }
 
+/// Pure editing/filtering state; what the submitted text *means* lives with
+/// the caller (`App::open_input`/`open_picker` take a continuation).
 #[derive(Debug, Clone)]
 pub struct InputState {
     pub prompt: String,
-    pub purpose: InputPurpose,
     pub text: String,
     /// Cursor as a char index into `text`.
     pub cursor: usize,
@@ -67,39 +33,30 @@ pub struct InputState {
     pub candidates: Vec<String>,
     /// Selection index into `filtered()`.
     pub selected: usize,
-    /// Opaque values handed back to the submit handler alongside the entered
-    /// text — context for the pending operation that outlives the transient
-    /// that opened it (e.g. log flags awaiting the "log other" rev).
-    pub carry: Vec<String>,
 }
 
 impl InputState {
-    pub fn plain(prompt: impl Into<String>, purpose: InputPurpose) -> Self {
+    pub fn plain(prompt: impl Into<String>) -> Self {
         Self {
             prompt: prompt.into(),
-            purpose,
             text: String::new(),
             cursor: 0,
             candidates: Vec::new(),
             selected: 0,
-            carry: Vec::new(),
         }
     }
 
-    pub fn picker(
-        prompt: impl Into<String>,
-        purpose: InputPurpose,
-        candidates: Vec<String>,
-    ) -> Self {
+    pub fn picker(prompt: impl Into<String>, candidates: Vec<String>) -> Self {
         Self {
             candidates,
-            ..Self::plain(prompt, purpose)
+            ..Self::plain(prompt)
         }
     }
 
-    /// Attach context to hand back to the submit handler with the entered text.
-    pub fn with_carry(mut self, carry: Vec<String>) -> Self {
-        self.carry = carry;
+    /// Prefill the text (e.g. a variable's current value), cursor at the end.
+    pub fn with_text(mut self, text: impl Into<String>) -> Self {
+        self.text = text.into();
+        self.cursor = self.text.chars().count();
         self
     }
 
@@ -327,7 +284,7 @@ mod tests {
 
     #[test]
     fn plain_input_edit_and_submit() {
-        let mut st = InputState::plain("Name", InputPurpose::CreateBranch);
+        let mut st = InputState::plain("Name");
         type_str(&mut st, "featurex");
         st.on_key(&key(KeyCode::Left));
         st.on_key(&key(KeyCode::Backspace)); // delete 'e' before 'x'
@@ -341,7 +298,7 @@ mod tests {
 
     #[test]
     fn multibyte_editing_is_char_based() {
-        let mut st = InputState::plain("Name", InputPurpose::CreateBranch);
+        let mut st = InputState::plain("Name");
         type_str(&mut st, "日本語");
         st.on_key(&key(KeyCode::Backspace));
         assert_eq!(st.text, "日本");
@@ -354,7 +311,6 @@ mod tests {
     fn picker_filters_and_submits_selection() {
         let mut st = InputState::picker(
             "Checkout",
-            InputPurpose::CheckoutRev,
             vec![
                 "main".into(),
                 "develop".into(),
@@ -375,7 +331,6 @@ mod tests {
     fn picker_matches_fuzzy_subsequences() {
         let mut st = InputState::picker(
             "Checkout",
-            InputPurpose::CheckoutRev,
             vec!["feature/a".into(), "feature/b".into(), "main".into()],
         );
         type_str(&mut st, "fb");
@@ -388,7 +343,6 @@ mod tests {
             text: "ma".into(),
             ..InputState::picker(
                 "Checkout",
-                InputPurpose::CheckoutRev,
                 vec!["dev-map".into(), "main".into(), "master".into()],
             )
         };
@@ -400,7 +354,6 @@ mod tests {
     fn picker_empty_text_lists_all_candidates_in_order() {
         let st = InputState::picker(
             "Checkout",
-            InputPurpose::CheckoutRev,
             vec!["main".into(), "develop".into(), "feature/a".into()],
         );
         assert_eq!(st.filtered(), vec!["main", "develop", "feature/a"]);
@@ -413,11 +366,7 @@ mod tests {
         // must hand them over sorted.
         let st = InputState {
             text: "fb".into(),
-            ..InputState::picker(
-                "Checkout",
-                InputPurpose::CheckoutRev,
-                vec!["feature/b".into()],
-            )
+            ..InputState::picker("Checkout", vec!["feature/b".into()])
         };
         let matches = st.matches();
         assert!(matches[0].1.windows(2).all(|w| w[0] < w[1]));
@@ -429,11 +378,7 @@ mod tests {
         // matches lowercase candidates.
         let st = InputState {
             text: "FEAT".into(),
-            ..InputState::picker(
-                "Checkout",
-                InputPurpose::CheckoutRev,
-                vec!["feature/a".into(), "main".into()],
-            )
+            ..InputState::picker("Checkout", vec!["feature/a".into(), "main".into()])
         };
         assert_eq!(st.filtered(), vec!["feature/a"]);
     }
@@ -442,11 +387,7 @@ mod tests {
     fn picker_match_is_case_insensitive_and_multibyte_safe() {
         let st = InputState {
             text: "fa".into(),
-            ..InputState::picker(
-                "Checkout",
-                InputPurpose::CheckoutRev,
-                vec!["Feature/A".into(), "docs".into()],
-            )
+            ..InputState::picker("Checkout", vec!["Feature/A".into(), "docs".into()])
         };
         let matches = st.matches();
         assert_eq!(matches.len(), 1);
@@ -455,7 +396,7 @@ mod tests {
 
         let st = InputState {
             text: "本語".into(),
-            ..InputState::picker("Checkout", InputPurpose::CheckoutRev, vec!["日本語".into()])
+            ..InputState::picker("Checkout", vec!["日本語".into()])
         };
         // Highlight indices are char positions, multibyte-safe.
         assert_eq!(st.matches()[0].1, vec![1, 2]);
@@ -474,7 +415,7 @@ mod tests {
 
     #[test]
     fn picker_falls_back_to_typed_text_when_no_match() {
-        let mut st = InputState::picker("Checkout", InputPurpose::CheckoutRev, vec!["main".into()]);
+        let mut st = InputState::picker("Checkout", vec!["main".into()]);
         type_str(&mut st, "v1.2.3");
         assert_eq!(
             st.on_key(&key(KeyCode::Enter)),
@@ -484,11 +425,7 @@ mod tests {
 
     #[test]
     fn tab_completes_to_selection_and_ctrl_u_clears() {
-        let mut st = InputState::picker(
-            "Checkout",
-            InputPurpose::CheckoutRev,
-            vec!["main".into(), "master".into()],
-        );
+        let mut st = InputState::picker("Checkout", vec!["main".into(), "master".into()]);
         type_str(&mut st, "mas");
         st.on_key(&key(KeyCode::Tab));
         assert_eq!(st.text, "master");
@@ -501,7 +438,6 @@ mod tests {
     fn picker_input_line_shows_filtered_and_total_counts() {
         let mut st = InputState::picker(
             "Checkout",
-            InputPurpose::CheckoutRev,
             vec![
                 "main".into(),
                 "develop".into(),
@@ -523,7 +459,7 @@ mod tests {
 
     #[test]
     fn esc_and_ctrl_g_cancel() {
-        let mut st = InputState::plain("Name", InputPurpose::CreateBranch);
+        let mut st = InputState::plain("Name");
         assert_eq!(st.on_key(&key(KeyCode::Esc)), InputResult::Cancel);
         assert_eq!(st.on_key(&ctrl('g')), InputResult::Cancel);
     }

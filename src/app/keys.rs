@@ -4,10 +4,10 @@
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::keymap::{normalize, KeyPress, Lookup, PaneKind};
-use crate::ui::input::{InputPurpose, InputResult, InputState};
+use crate::ui::input::InputResult;
 use crate::ui::transient::TransientResult;
 
-use super::{App, PendingAction};
+use super::{App, InputHandler, PendingAction};
 
 impl App {
     pub(super) fn on_key(&mut self, ev: KeyEvent) {
@@ -21,28 +21,29 @@ impl App {
             self.on_confirm_key(&kp);
             return;
         }
-        if let Some(input) = self.input.as_mut() {
-            let purpose = input.purpose;
-            match input.on_key(&kp) {
+        // Take the overlay so a submit can consume its continuation (which
+        // may open the next input of a chain); Consumed puts it back.
+        if let Some(mut overlay) = self.input.take() {
+            match overlay.state.on_key(&kp) {
                 InputResult::Consumed => {
                     // Incremental search reacts to every edit.
-                    if purpose == InputPurpose::Search {
-                        let query = input.text.clone();
+                    let query = matches!(overlay.handler, InputHandler::Search)
+                        .then(|| overlay.state.text.clone());
+                    self.input = Some(overlay);
+                    if let Some(query) = query {
                         self.search_preview(query);
                     }
                 }
                 InputResult::Cancel => {
-                    self.input = None;
-                    if purpose == InputPurpose::Search {
+                    if matches!(overlay.handler, InputHandler::Search) {
                         self.restore_search_origin();
                     }
                     self.message = Some("aborted".into());
                 }
-                InputResult::Submit(value) => {
-                    let carry = std::mem::take(&mut input.carry);
-                    self.input = None;
-                    self.on_input_submit(purpose, value, carry);
-                }
+                InputResult::Submit(value) => match overlay.handler {
+                    InputHandler::Search => self.search_submit(value),
+                    InputHandler::Submit(on_submit) => on_submit(self, value),
+                },
             }
             return;
         }
@@ -74,11 +75,7 @@ impl App {
                 TransientResult::Unbound => {
                     self.message = Some("key not bound in this menu".into());
                 }
-                TransientResult::Prompt { flag, desc } => {
-                    // Prompt for the value over the still-open transient; the
-                    // submit handler writes it back into `transient.values`.
-                    self.input = Some(InputState::plain(desc, InputPurpose::TransientArg(flag)));
-                }
+                TransientResult::Prompt { flag, desc } => self.prompt_transient_arg(flag, desc),
                 TransientResult::Invoke(action, args) => {
                     self.transient = None;
                     self.invoke_transient(action, args);

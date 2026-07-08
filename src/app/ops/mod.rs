@@ -12,7 +12,7 @@ mod rebase;
 mod remote;
 
 use crate::command::Menu;
-use crate::ui::input::InputPurpose;
+use crate::ui::input::InputState;
 use crate::ui::transient::{
     menu_def, TransientAction, TransientState, MERGE_IN_PROGRESS, REBASE_IN_PROGRESS,
 };
@@ -46,42 +46,14 @@ impl App {
         }
     }
 
-    /// Route a submitted minibuffer value to the module that opened the input.
-    pub(super) fn on_input_submit(
-        &mut self,
-        purpose: InputPurpose,
-        value: String,
-        carry: Vec<String>,
-    ) {
-        if purpose == InputPurpose::Search {
-            self.search_submit(value);
-            return;
-        }
-        if value.is_empty() {
-            self.message = Some("empty input".into());
-            return;
-        }
-        match purpose {
-            InputPurpose::CheckoutRev
-            | InputPurpose::CreateCheckoutBranch
-            | InputPurpose::CreateBranch => self.branch_submit(purpose, value),
-            InputPurpose::MergeRev
-            | InputPurpose::MergeEditRev
-            | InputPurpose::MergeNoCommitRev
-            | InputPurpose::MergeSquashRev
-            | InputPurpose::MergeAbsorbRev
-            | InputPurpose::MergePreviewRev
-            | InputPurpose::MergeIntoRev => self.merge_submit(purpose, value, carry),
-            InputPurpose::RebaseOntoRev | InputPurpose::RebaseInteractiveRev => {
-                self.rebase_submit(purpose, value, carry)
+    /// Prompt for a transient value-argument over the still-open transient;
+    /// the continuation writes the value back into `transient.values` (empty
+    /// clears the argument).
+    pub(in crate::app) fn prompt_transient_arg(&mut self, flag: &'static str, desc: &'static str) {
+        self.open_input_state(InputState::plain(desc), true, move |app, value| {
+            if let Some(t) = app.transient.as_mut() {
+                t.set_value(flag, value);
             }
-            InputPurpose::LogRev => self.log_submit(value, carry),
-            InputPurpose::TransientArg(flag) => {
-                if let Some(t) = self.transient.as_mut() {
-                    t.set_value(flag, value);
-                }
-            }
-            InputPurpose::Search => unreachable!("handled by the early return above"),
-        }
+        });
     }
 }

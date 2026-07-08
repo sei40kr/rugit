@@ -2,7 +2,6 @@
 //! collected options and opens a log buffer.
 
 use crate::app::App;
-use crate::ui::input::{InputPurpose, InputState};
 use crate::ui::transient::TransientAction;
 
 impl App {
@@ -24,20 +23,14 @@ impl App {
                 self.load_log("Commits in all references".into(), args, false)
             }
             TransientAction::LogOther => {
-                // Carry the log options through the rev picker to the submit.
-                self.input = Some(
-                    InputState::picker("Log", InputPurpose::LogRev, self.list_branches())
-                        .with_carry(args),
-                );
+                // The log options ride into the continuation as captures.
+                let revs = self.list_branches();
+                self.open_picker("Log", revs, move |app, rev| {
+                    args.push(rev.clone());
+                    app.load_log(format!("Commits in {rev}"), args, false);
+                });
             }
             _ => unreachable!("not a log action"),
         }
-    }
-
-    pub(super) fn log_submit(&mut self, value: String, carry: Vec<String>) {
-        // `carry` holds the log options collected in the transient.
-        let mut extra = carry;
-        extra.push(value.clone());
-        self.load_log(format!("Commits in {value}"), extra, false);
     }
 }

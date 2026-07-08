@@ -25,8 +25,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     if let Some(input) = &app.input {
         // Show up to 10 candidates plus the input line.
-        let lines = input.render_lines(&app.theme, 10);
-        draw_bottom_panel(f, &app.theme, area, &input.prompt, lines);
+        let lines = input.state.render_lines(&app.theme, 10);
+        draw_bottom_panel(f, &app.theme, area, &input.state.prompt, lines);
     } else if let Some(transient) = &app.transient {
         draw_bottom_panel(
             f,

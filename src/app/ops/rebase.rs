@@ -11,7 +11,6 @@ use crate::command::TodoCmd;
 use crate::git::todo::{self, TodoAction, TodoEntry};
 use crate::keymap::PaneKind;
 use crate::ui::build;
-use crate::ui::input::{InputPurpose, InputState};
 use crate::ui::pane::{Pane, RebaseTodoState};
 use crate::ui::section::SectionValue;
 use crate::ui::transient::TransientAction;
@@ -60,24 +59,24 @@ impl App {
                 self.run_git_bg(format!("rebase onto {upstream}"), cli, None);
             }
             TransientAction::RebaseElsewhere => {
-                self.input = Some(
-                    InputState::picker(
-                        "Rebase onto",
-                        InputPurpose::RebaseOntoRev,
-                        self.list_revs_at_point(),
-                    )
-                    .with_carry(args),
-                );
+                let revs = self.list_revs_at_point();
+                // The -i switch routes into the todo editor too.
+                self.open_picker("Rebase onto", revs, move |app, rev| {
+                    if args.iter().any(|f| f == "--interactive") {
+                        app.open_todo_editor(rev, args);
+                        return;
+                    }
+                    let mut cli = svec(&["rebase"]);
+                    cli.extend(args);
+                    cli.push(rev.clone());
+                    app.run_git_bg(format!("rebase onto {rev}"), cli, None);
+                });
             }
             TransientAction::RebaseInteractive => {
-                self.input = Some(
-                    InputState::picker(
-                        "Interactive rebase onto",
-                        InputPurpose::RebaseInteractiveRev,
-                        self.list_revs_at_point(),
-                    )
-                    .with_carry(args),
-                );
+                let revs = self.list_revs_at_point();
+                self.open_picker("Interactive rebase onto", revs, move |app, rev| {
+                    app.open_todo_editor(rev, args)
+                });
             }
             // Continuing commits the resolved conflict, which can open
             // $EDITOR for the message; hand the terminal over.
@@ -105,26 +104,6 @@ impl App {
             }
             _ => unreachable!("not a rebase action"),
         }
-    }
-
-    pub(super) fn rebase_submit(
-        &mut self,
-        purpose: InputPurpose,
-        value: String,
-        carry: Vec<String>,
-    ) {
-        // `carry` holds the flags collected in the transient; the -i switch
-        // routes "elsewhere" into the todo editor too.
-        if purpose == InputPurpose::RebaseInteractiveRev
-            || carry.iter().any(|f| f == "--interactive")
-        {
-            self.open_todo_editor(value, carry);
-            return;
-        }
-        let mut args = svec(&["rebase"]);
-        args.extend(carry);
-        args.push(value.clone());
-        self.run_git_bg(format!("rebase onto {value}"), args, None);
     }
 
     // ---- todo editor -------------------------------------------------------

@@ -1,9 +1,9 @@
 //! Buffer search: live preview while the input is open, n/p match
 //! navigation (with wraparound) while a query is active.
 
-use crate::ui::input::{InputPurpose, InputState};
+use crate::ui::input::InputState;
 
-use super::App;
+use super::{App, InputHandler, InputOverlay};
 
 /// Active buffer-search state. While `query` is set, matches are highlighted
 /// and n/p navigate matches instead of sections; ESC clears it.
@@ -17,7 +17,10 @@ pub struct SearchState {
 impl App {
     pub(super) fn start_search(&mut self) {
         self.search.origin = self.panes.last().map(|p| p.cursor).unwrap_or(0);
-        self.input = Some(InputState::plain("Search", InputPurpose::Search));
+        self.input = Some(InputOverlay {
+            state: InputState::plain("Search"),
+            handler: InputHandler::Search,
+        });
     }
 
     /// Live update while the search input is open: highlight matches and jump

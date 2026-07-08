@@ -74,8 +74,8 @@ drive the TUI headlessly, run it in a PTY and pipe keystrokes:
 - **New transient menu**: add a `Menu` variant (`command.rs`), define a
   `TransientDef` + `menu_def` arm in `ui/transient.rs`, map its
   `TransientAction`s in `App::invoke_transient`. Actions that need an
-  argument open an `InputState` (plain minibuffer or picker) with a new
-  `InputPurpose`, handled in `App::on_input_submit`.
+  argument call `App::open_input` / `open_picker` with a continuation
+  closure; multi-step flows chain by opening the next input inside it.
 - **New buffer kind**: add a `PaneKind`, a tree builder in `ui/build.rs`,
   and (optionally) a buffer-local keymap. Navigation, scrolling, folding,
   search, and rendering come for free from `Pane`.

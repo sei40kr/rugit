@@ -1,12 +1,11 @@
 //! The merge transient: pick a revision to merge into HEAD; the transient
-//! flags are carried through the picker to the submit. Absorb and
+//! flags ride into the picker's continuation as captures. Absorb and
 //! merge-into chain merge + branch cleanup on a worker; preview shows the
 //! would-be merge via `merge-tree` without committing. Abort confirms first.
 
 use std::thread;
 
 use crate::app::{svec, App, AppEvent, Confirm, EditorRequest, PendingAction};
-use crate::ui::input::{InputPurpose, InputState};
 use crate::ui::transient::TransientAction;
 
 impl App {
@@ -17,100 +16,87 @@ impl App {
     }
 
     pub(super) fn merge_action(&mut self, action: TransientAction, args: Vec<String>) {
-        let purpose = match action {
-            TransientAction::Merge => InputPurpose::MergeRev,
-            TransientAction::MergeEdit => InputPurpose::MergeEditRev,
-            TransientAction::MergeNoCommit => InputPurpose::MergeNoCommitRev,
-            TransientAction::MergeSquash => InputPurpose::MergeSquashRev,
-            TransientAction::MergeAbsorb => InputPurpose::MergeAbsorbRev,
-            TransientAction::MergePreview => InputPurpose::MergePreviewRev,
-            TransientAction::MergeInto => InputPurpose::MergeIntoRev,
-            TransientAction::MergeAbort => {
-                // Aborting throws away any conflict resolutions in progress,
-                // so gate on an actual merge (the in-progress menu is chosen
-                // from the snapshot, which can lag) and confirm like discard.
-                if !self.merging() {
-                    self.message = Some("no merge in progress".into());
-                    return;
-                }
-                self.confirm = Some(Confirm {
-                    prompt: "Abort the merge in progress?".into(),
-                    action: PendingAction::Git {
-                        desc: "abort merge".into(),
-                        args: svec(&["merge", "--abort"]),
-                        stdin: None,
-                    },
-                });
+        if action == TransientAction::MergeAbort {
+            // Aborting throws away any conflict resolutions in progress,
+            // so gate on an actual merge (the in-progress menu is chosen
+            // from the snapshot, which can lag) and confirm like discard.
+            if !self.merging() {
+                self.message = Some("no merge in progress".into());
                 return;
             }
-            _ => unreachable!("not a merge action"),
-        };
-        self.input =
-            Some(InputState::picker("Merge", purpose, self.list_revs_at_point()).with_carry(args));
+            self.confirm = Some(Confirm {
+                prompt: "Abort the merge in progress?".into(),
+                action: PendingAction::Git {
+                    desc: "abort merge".into(),
+                    args: svec(&["merge", "--abort"]),
+                    stdin: None,
+                },
+            });
+            return;
+        }
+        let revs = self.list_revs_at_point();
+        self.open_picker("Merge", revs, move |app, rev| {
+            app.merge_rev(action, rev, args)
+        });
     }
 
-    pub(super) fn merge_submit(
-        &mut self,
-        purpose: InputPurpose,
-        value: String,
-        carry: Vec<String>,
-    ) {
-        // `carry` holds the flags collected in the transient.
-        match purpose {
-            InputPurpose::MergeAbsorbRev => {
-                // Merge the branch, then delete it (magit-merge-absorb); the
-                // delete only runs when the merge succeeded.
+    /// Run the picked merge variant against `rev` with the transient's flags.
+    fn merge_rev(&mut self, action: TransientAction, rev: String, flags: Vec<String>) {
+        match action {
+            TransientAction::MergeAbsorb => {
+                // Merge the branch, then delete it; the delete only runs
+                // when the merge succeeded.
                 let mut merge = svec(&["merge", "--no-edit"]);
-                merge.extend(carry);
-                merge.push(value.clone());
+                merge.extend(flags);
+                merge.push(rev.clone());
                 self.run_git_seq_bg(
-                    format!("absorb {value}"),
-                    vec![merge, svec(&["branch", "-d", &value])],
+                    format!("absorb {rev}"),
+                    vec![merge, svec(&["branch", "-d", &rev])],
                 );
                 return;
             }
-            InputPurpose::MergeIntoRev => {
+            TransientAction::MergeInto => {
                 // Merge the current branch into another and delete the
-                // former (magit-merge-into). The merge makes the current
-                // branch fully merged, so `-d` is safe.
+                // former. The merge makes the current branch fully merged,
+                // so `-d` is safe.
                 let Some(current) = self.snapshot.as_ref().and_then(|s| s.branch.head.clone())
                 else {
                     self.message = Some("cannot merge into: not on a branch".into());
                     return;
                 };
                 let mut merge = svec(&["merge", "--no-edit"]);
-                merge.extend(carry);
+                merge.extend(flags);
                 merge.push(current.clone());
                 self.run_git_seq_bg(
-                    format!("merge {current} into {value}"),
+                    format!("merge {current} into {rev}"),
                     vec![
-                        svec(&["checkout", &value]),
+                        svec(&["checkout", &rev]),
                         merge,
                         svec(&["branch", "-d", &current]),
                     ],
                 );
                 return;
             }
-            InputPurpose::MergePreviewRev => {
-                self.preview_merge(value);
+            TransientAction::MergePreview => {
+                self.preview_merge(rev);
                 return;
             }
             _ => {}
         }
-        let base: &[&str] = match purpose {
-            InputPurpose::MergeRev => &["merge", "--no-edit"],
-            InputPurpose::MergeEditRev => &["merge", "--edit"],
+        let base: &[&str] = match action {
+            TransientAction::Merge => &["merge", "--no-edit"],
+            TransientAction::MergeEdit => &["merge", "--edit"],
             // A fast-forward cannot be stopped by --no-commit alone, so force
             // a real merge; otherwise "don't commit" would silently move HEAD.
-            InputPurpose::MergeNoCommitRev => &["merge", "--no-commit", "--no-ff"],
-            InputPurpose::MergeSquashRev => &["merge", "--squash"],
-            _ => unreachable!("not a merge input"),
+            TransientAction::MergeNoCommit => &["merge", "--no-commit", "--no-ff"],
+            TransientAction::MergeSquash => &["merge", "--squash"],
+            _ => unreachable!("not a merge action"),
         };
         let mut args = svec(base);
-        args.extend(carry);
-        args.push(value.clone());
-        let desc = format!("merge {value}");
-        if purpose == InputPurpose::MergeEditRev {
+        args.extend(flags);
+        args.push(rev.clone());
+        let desc = format!("merge {rev}");
+        if action == TransientAction::MergeEdit {
             self.editor_request = Some(EditorRequest::new(desc, args));
         } else {
             self.run_git_bg(desc, args, None);

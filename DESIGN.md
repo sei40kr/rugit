@@ -336,17 +336,22 @@ Not yet implemented: persisting switch/arg defaults across sessions.
 ## 6.5 Minibuffer input and the picker
 
 When a transient action needs an argument (a checkout target, a new branch
-name), it opens an `InputState`. One component, two modes:
+name), it opens an `InputState`. One component, three modes:
 
 - **plain input**: free text (e.g. a new branch name). Character-wise cursor
   editing (Left/Right/Home/End/Backspace/Delete/C-u). Multibyte-safe — the
   cursor is a char index.
-- **picker**: providing `candidates` turns it into a filtering selector.
-  The typed text filters with case-insensitive fuzzy matching (the
-  `fuzzy-matcher` crate's skim algorithm, best score first), UP/DOWN
-  (C-p/C-n) move the selection, TAB completes the selection into the
-  input, RET submits the selected candidate — or, with zero matches, the
-  raw typed text (which is how checking out a tag or SHA works).
+- **picker**: a filtering selector over `candidates`. The typed text
+  filters with case-insensitive fuzzy matching (the `fuzzy-matcher`
+  crate's skim algorithm, best score first), UP/DOWN (C-p/C-n) move the
+  selection, TAB completes the selection into the input, RET submits the
+  selected candidate — or, with zero matches, the raw typed text (which
+  is how checking out a tag or SHA works). Used where values outside the
+  candidates are also valid, so it opens even with an empty list.
+- **strict picker**: like the picker, but the candidates are the complete
+  set of valid values (local branches, tags, stashes, remotes), so RET
+  with zero matches does nothing. `App::open_strict_picker` refuses to
+  open on an empty set and shows a message ("no tags") instead.
 
 Key-resolution priority: **confirm > input > help > transient > keymap**.
 `InputState` is pure editing/filtering state; what the submitted text

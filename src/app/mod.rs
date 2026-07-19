@@ -279,7 +279,9 @@ impl App {
         self.open_input_state(InputState::plain(prompt), false, on_submit);
     }
 
-    /// Like `open_input`, with fuzzy-filtered candidates.
+    /// Like `open_input`, with fuzzy-filtered candidates. Text matching no
+    /// candidate still submits, so this fits prompts where other values are
+    /// also valid (e.g. any revision).
     fn open_picker(
         &mut self,
         prompt: impl Into<String>,

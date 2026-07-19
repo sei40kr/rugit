@@ -1,9 +1,11 @@
-//! Minibuffer input and picker — a single component with two modes:
-//! - plain input (`candidates` empty): free text, e.g. a new branch name
+//! Minibuffer input and picker — a single component with three modes:
+//! - plain input: free text, e.g. a new branch name
 //! - picker: text filters `candidates` (case-insensitive fuzzy matching via
 //!   `fuzzy-matcher`, best match first), UP/DOWN (or C-p/C-n) move the
 //!   selection, TAB completes, RET submits the selected candidate (or the
 //!   raw text when nothing matches).
+//! - strict picker: like the picker, but only a listed candidate can be
+//!   submitted — RET with zero matches does nothing.
 
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
@@ -21,6 +23,17 @@ pub enum InputResult {
     Submit(String),
 }
 
+/// How the submitted value relates to `candidates`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputMode {
+    /// Free text, no candidate list.
+    Plain,
+    /// Fuzzy-filtered candidates; text matching nothing submits as-is.
+    Picker,
+    /// Fuzzy-filtered candidates; only a listed candidate submits.
+    StrictPicker,
+}
+
 /// Pure editing/filtering state; what the submitted text *means* lives with
 /// the caller (`App::open_input`/`open_picker` take a continuation).
 #[derive(Debug, Clone)]
@@ -29,10 +42,11 @@ pub struct InputState {
     pub text: String,
     /// Cursor as a char index into `text`.
     pub cursor: usize,
-    /// Non-empty makes this a picker.
+    /// Ignored in `Plain` mode; may be empty in `Picker` mode.
     pub candidates: Vec<String>,
     /// Selection index into `filtered()`.
     pub selected: usize,
+    pub mode: InputMode,
 }
 
 impl InputState {
@@ -43,13 +57,22 @@ impl InputState {
             cursor: 0,
             candidates: Vec::new(),
             selected: 0,
+            mode: InputMode::Plain,
         }
     }
 
     pub fn picker(prompt: impl Into<String>, candidates: Vec<String>) -> Self {
         Self {
             candidates,
+            mode: InputMode::Picker,
             ..Self::plain(prompt)
+        }
+    }
+
+    pub fn strict_picker(prompt: impl Into<String>, candidates: Vec<String>) -> Self {
+        Self {
+            mode: InputMode::StrictPicker,
+            ..Self::picker(prompt, candidates)
         }
     }
 
@@ -61,7 +84,7 @@ impl InputState {
     }
 
     pub fn is_picker(&self) -> bool {
-        !self.candidates.is_empty()
+        self.mode != InputMode::Plain
     }
 
     /// Candidates fuzzy-matching the current text, best score first (ties
@@ -104,6 +127,10 @@ impl InputState {
                     let filtered = self.filtered();
                     match filtered.get(self.selected.min(filtered.len().saturating_sub(1))) {
                         Some(sel) => sel.to_string(),
+                        // A strict picker has nothing to submit.
+                        None if self.mode == InputMode::StrictPicker => {
+                            return InputResult::Consumed
+                        }
                         None => self.text.trim().to_string(),
                     }
                 } else {
@@ -193,8 +220,13 @@ impl InputState {
                 out.push(Line::from(spans));
             }
             if matches.is_empty() {
+                let hint = if self.mode == InputMode::StrictPicker {
+                    "  (no match)"
+                } else {
+                    "  (no match — RET uses the typed text)"
+                };
                 out.push(Line::from(Span::styled(
-                    "  (no match — RET uses the typed text)".to_string(),
+                    hint.to_string(),
                     Style::new().dim(),
                 )));
             }
@@ -420,6 +452,30 @@ mod tests {
         assert_eq!(
             st.on_key(&key(KeyCode::Enter)),
             InputResult::Submit("v1.2.3".into())
+        );
+    }
+
+    #[test]
+    fn picker_with_no_candidates_submits_typed_text() {
+        let mut st = InputState::picker("Checkout", Vec::new());
+        assert!(st.is_picker());
+        type_str(&mut st, "v1.2.3");
+        assert_eq!(
+            st.on_key(&key(KeyCode::Enter)),
+            InputResult::Submit("v1.2.3".into())
+        );
+    }
+
+    #[test]
+    fn strict_picker_submits_only_candidates() {
+        let mut st = InputState::strict_picker("Delete branch", vec!["main".into()]);
+        type_str(&mut st, "nope");
+        assert_eq!(st.on_key(&key(KeyCode::Enter)), InputResult::Consumed);
+        st.on_key(&ctrl('u'));
+        type_str(&mut st, "ma");
+        assert_eq!(
+            st.on_key(&key(KeyCode::Enter)),
+            InputResult::Submit("main".into())
         );
     }
 

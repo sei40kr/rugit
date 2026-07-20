@@ -60,7 +60,8 @@ fn draw_pane(f: &mut Frame, app: &mut App, area: Rect) {
     let scrolloff = app.scrolloff;
     let cursor_bg = Style::new().bg(app.theme.cursor_bg);
     let search_style = Style::new()
-        .bg(app.theme.search_match)
+        .bg(app.theme.search_match_bg)
+        .fg(app.theme.search_match_fg)
         .add_modifier(Modifier::BOLD);
     let query = app.search.query.clone();
     let Some(pane) = app.panes.last_mut() else {

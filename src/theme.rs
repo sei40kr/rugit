@@ -59,7 +59,8 @@ theme! {
     diff_remove:     Color::Red      => "diff-remove",
     // Chrome
     cursor_bg:       Color::DarkGray => "cursor-bg",
-    search_match:    Color::Yellow   => "search-match",   // bg of matched text
+    search_match_bg: Color::Magenta   => "search-match-bg",  // bg of matched text
+    search_match_fg: Color::LightCyan => "search-match-fg",  // fg of matched text
     bar_bg:          Color::Black    => "bar-bg",
     bar_fg:          Color::Gray     => "bar-fg",
     message:         Color::Cyan     => "message",

@@ -382,8 +382,9 @@ continuation.
   deactivates the search. Match navigation is its own command pair
   (`SearchNext`/`SearchPrev`), so the keymap stays static and section
   motion (`C-j`/`C-k`) keeps working while a search is active.
-- **Highlighting**: only the matched substrings get a background color (the
-  `search-match` role). A per-char match mask is computed over the whole
+- **Highlighting**: only the matched substrings are restyled (the
+  `search-match-bg` / `search-match-fg` roles).
+  A per-char match mask is computed over the whole
   line text, and existing `Span`s are split at match boundaries and
   `Style::patch`ed (`highlight_query`) — surrounding styling such as diff
   colors survives. Multibyte stays aligned because everything is

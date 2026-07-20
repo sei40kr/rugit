@@ -91,7 +91,8 @@ scrolloff = 3
 [colors]               # role names: see src/theme.rs
 diff-add     = "green" # color names, "#rrggbb", or 256-color indexes ("42")
 cursor-bg    = "#3a3a3a"
-search-match = "yellow"
+search-match-bg = "magenta"   # bg of search matches
+search-match-fg = "lightcyan" # fg of search matches
 ```
 
 Command names for remapping are listed in the help buffer (`?`).

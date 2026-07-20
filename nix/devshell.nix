@@ -10,6 +10,13 @@ pkgs.mkShell {
     pkgs.rustfmt
     pkgs.rust-analyzer
   ]
+  # Runtime clipboard tools for the `y s` / `y b` copy commands. macOS ships
+  # `pbcopy`, so these are only needed on Linux (Wayland / X11).
+  ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
+    pkgs.wl-clipboard
+    pkgs.xclip
+    pkgs.xsel
+  ]
   ++ pre-commit-check.enabledPackages;
 
   shellHook = ''

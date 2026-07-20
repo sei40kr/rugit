@@ -152,6 +152,9 @@ pub struct App {
     pub search: SearchState,
     pub should_quit: bool,
     editor_request: Option<EditorRequest>,
+    /// Text to place on the system clipboard. The main loop owns the
+    /// terminal, so it emits the OSC 52 sequence after `update`.
+    clipboard_request: Option<String>,
     refresh_gen: u64,
     /// A snapshot read is in flight. Refreshes requested meanwhile only set
     /// `refresh_dirty` — on a large repo the `.git` watcher can fire faster
@@ -197,6 +200,7 @@ impl App {
             search: SearchState::default(),
             should_quit: false,
             editor_request: None,
+            clipboard_request: None,
             refresh_gen: 0,
             refresh_inflight: false,
             refresh_dirty: false,
@@ -205,6 +209,10 @@ impl App {
 
     pub fn take_editor_request(&mut self) -> Option<EditorRequest> {
         self.editor_request.take()
+    }
+
+    pub fn take_clipboard_request(&mut self) -> Option<String> {
+        self.clipboard_request.take()
     }
 
     pub fn which_key_candidates(&self) -> Vec<(String, String)> {
@@ -270,6 +278,8 @@ impl App {
             }
             Command::ProcessLog => self.open_process_log(),
             Command::ShowRefs => self.show_refs(),
+            Command::Copy => self.copy_at_point(),
+            Command::CopyRevision => self.copy_buffer_revision(),
         }
     }
 

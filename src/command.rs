@@ -24,6 +24,10 @@ pub enum Command {
     ProcessLog,
     /// Open the references buffer (branches, remotes, tags).
     ShowRefs,
+    /// Copy the value at point (commit/ref/file/stash) to the clipboard.
+    Copy,
+    /// Copy the revision the current buffer is about to the clipboard.
+    CopyRevision,
 }
 
 /// Rebase-todo buffer commands. Grouped like `NavCmd` so `dispatch`
@@ -304,6 +308,16 @@ pub const COMMANDS: &[CommandInfo] = &[
         Command::ShowRefs,
         "show-refs",
         "Show branches, remotes and tags",
+    ),
+    ci(
+        Command::Copy,
+        "copy",
+        "Copy the value at point to the clipboard",
+    ),
+    ci(
+        Command::CopyRevision,
+        "copy-revision",
+        "Copy the buffer's revision to the clipboard",
     ),
 ];
 

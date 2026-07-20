@@ -33,6 +33,10 @@ exactly as they do on the command line.
   jump between matches
 - **Log & revision views** — `l` opens the log menu; `RET` on a commit or
   stash opens its diff
+- **Copy to clipboard** — `y s` copies the value at point (a commit, ref,
+  stash, or file path) and `y b` the buffer's revision; a real clipboard tool
+  (wl-copy / xclip / xsel / pbcopy) is used when available so failures are
+  reported, else OSC 52 (works over SSH)
 - **Real git, transparently** — every command rugit runs is logged to a
   process buffer (`` ` ``); commit messages open in your `$GIT_EDITOR`
 - **Auto-refresh** — the status buffer updates when `.git` changes, even from
@@ -73,7 +77,8 @@ The bindings are vim-flavored: `j`/`k` move, `g` and `z` are prefixes,
 | `S` / `U` | stage all tracked / unstage all |
 | `x` | discard the change at point (with confirmation) |
 | `RET` | show the commit / stash at point |
-| `y` | references buffer (branches, remotes, tags) |
+| `y r` | references buffer (branches, remotes, tags) |
+| `y s` / `y b` | copy value at point / buffer revision to clipboard |
 | `/` | incremental search (`RET` to confirm, `ESC` to clear) |
 | `n` / `N` | next / previous search match |
 | `` ` `` | git process log |

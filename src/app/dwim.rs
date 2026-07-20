@@ -6,6 +6,7 @@ use std::thread;
 
 use crate::git::patch::{self, LineOp};
 use crate::git::types::DiffArea;
+use crate::keymap::PaneKind;
 use crate::ui::section::{Group, SectionValue};
 
 use super::{svec, App, AppEvent, Confirm, PendingAction};
@@ -256,6 +257,46 @@ impl App {
             }
         }
         Some(patch::hunk_patch(fd, hunk))
+    }
+
+    /// Copy the revision the current buffer is about (magit-copy-buffer-revision,
+    /// `y b`): the commit a revision buffer shows, else the commit at point,
+    /// falling back to the current branch.
+    pub(super) fn copy_buffer_revision(&mut self) {
+        let rev = match self.panes.last() {
+            Some(p) if p.kind == PaneKind::Revision => Some(p.title.clone()),
+            Some(p) => match p.value_at_cursor() {
+                SectionValue::Commit { hash } => Some(hash),
+                _ => None,
+            },
+            None => None,
+        };
+        let rev = rev
+            .or_else(|| self.snapshot.as_ref().and_then(|s| s.branch.head.clone()))
+            .unwrap_or_else(|| "HEAD".to_string());
+        self.message = Some(format!("copied: {rev}"));
+        self.clipboard_request = Some(rev);
+    }
+
+    /// Copy the value under point to the system clipboard (magit-copy-section-value,
+    /// `y s`): a commit hash (or ref name in the references buffer), a stash
+    /// id, or a file path. The main loop performs the copy since it owns the
+    /// terminal.
+    pub(super) fn copy_at_point(&mut self) {
+        let Some(pane) = self.panes.last() else {
+            return;
+        };
+        let value = match pane.value_at_cursor() {
+            SectionValue::Commit { hash } => hash,
+            SectionValue::Stash { index } => format!("stash@{{{index}}}"),
+            SectionValue::File { path, .. } | SectionValue::Hunk { path, .. } => path,
+            _ => {
+                self.message = Some("nothing to copy here".into());
+                return;
+            }
+        };
+        self.message = Some(format!("copied: {value}"));
+        self.clipboard_request = Some(value);
     }
 
     pub(super) fn visit_at_point(&mut self) {

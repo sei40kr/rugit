@@ -108,7 +108,7 @@ src/
 │  ├ mod.rs      App struct, AppEvent, update(), command dispatch table
 │  ├ keys.rs     key routing (confirm > input > help > transient > keymap)
 │  ├ dwim.rs     stage/unstage/discard/visit on the section at point
-│  ├ search.rs   buffer-search state, incremental preview, n/p motion
+│  ├ search.rs   buffer-search state, incremental preview, n/N motion
 │  ├ workers.rs  worker-thread git calls, refresh generations, process log
 │  └ ops/        one module per transient menu (commit / branch / remote /
 │                log); a new menu = a new file + one routing arm in ops/mod.rs
@@ -378,11 +378,10 @@ continuation.
 - **Smart-case**: an all-lowercase query matches case-insensitively; any
   uppercase character makes it case-sensitive.
 - **Modal switch after confirming**: RET makes the search "active", and
-  `n`/`p` dispatch to **match navigation** (with wraparound) instead of
-  section navigation. ESC deactivates the search and n/p revert. The keymap
-  itself stays static; the switch is a match guard in `dispatch()`
-  (`Command::NextSection if self.search.is_some()`) — modal behavior is kept
-  out of the keymap layer by design.
+  `n`/`N` jump to the next/previous **match** (with wraparound) until ESC
+  deactivates the search. Match navigation is its own command pair
+  (`SearchNext`/`SearchPrev`), so the keymap stays static and section
+  motion (`C-j`/`C-k`) keeps working while a search is active.
 - **Highlighting**: only the matched substrings get a background color (the
   `search-match` role). A per-char match mask is computed over the whole
   line text, and existing `Span`s are split at match boundaries and

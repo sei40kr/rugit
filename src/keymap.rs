@@ -301,10 +301,13 @@ pub fn default_keymaps() -> Keymaps {
     use crate::command::NavCmd::*;
     use crate::command::{Menu, TodoCmd};
     use Command::*;
+    // The mnemonic keys are adapted to vim-style bindings: j/k/n/N,
+    // g and z prefixes, and V (line selection) keep their vim roles, so
+    // revert sits on "_", discard on "x", reset on "O" and stash on "Z".
     let mut global = Keymap::default();
     for (spec, cmd) in [
         ("q", Quit),
-        ("g", Refresh),
+        ("g r", Refresh),
         ("j", Nav(MoveDown)),
         ("DOWN", Nav(MoveDown)),
         ("k", Nav(MoveUp)),
@@ -316,32 +319,38 @@ pub fn default_keymaps() -> Keymaps {
         ("PGDN", Nav(HalfPageDown)),
         ("PGUP", Nav(HalfPageUp)),
         ("HOME", Nav(GotoTop)),
+        ("g g", Nav(GotoTop)),
         ("END", Nav(GotoBottom)),
         ("G", Nav(GotoBottom)),
-        ("n", Nav(NextSection)),
-        ("p", Nav(PrevSection)),
+        ("C-j", Nav(NextSection)),
+        ("g j", Nav(NextSection)),
+        ("C-k", Nav(PrevSection)),
+        ("g k", Nav(PrevSection)),
+        ("g h", Nav(ParentSection)),
         ("^", Nav(ParentSection)),
         ("TAB", ToggleSection),
+        ("z a", ToggleSection),
         ("RET", Visit),
         ("/", Search),
+        ("n", SearchNext),
+        ("N", SearchPrev),
         ("c", Transient(Menu::Commit)),
         ("b", Transient(Menu::Branch)),
         ("m", Transient(Menu::Merge)),
         ("r", Transient(Menu::Rebase)),
         ("A", Transient(Menu::CherryPick)),
-        // Revert lives on "_" (and discard on "x"): the mnemonic keys
-        // are adapted to vim-style bindings, where V selects lines.
         ("_", Transient(Menu::Revert)),
         ("O", Transient(Menu::Reset)),
         ("Z", Transient(Menu::Stash)),
         ("t", Transient(Menu::Tag)),
         ("M", Transient(Menu::Remote)),
+        ("p", Transient(Menu::Push)),
         ("P", Transient(Menu::Push)),
         ("F", Transient(Menu::Pull)),
         ("f", Transient(Menu::Fetch)),
         ("l", Transient(Menu::Log)),
         ("?", Help),
-        ("$", ProcessLog),
+        ("`", ProcessLog),
     ] {
         global.bind(spec, cmd);
     }

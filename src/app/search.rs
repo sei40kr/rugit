@@ -1,4 +1,4 @@
-//! Buffer search: live preview while the input is open, n/p match
+//! Buffer search: live preview while the input is open, n/N match
 //! navigation (with wraparound) while a query is active.
 
 use crate::ui::input::InputState;
@@ -6,7 +6,7 @@ use crate::ui::input::InputState;
 use super::{App, InputHandler, InputOverlay};
 
 /// Active buffer-search state. While `query` is set, matches are highlighted
-/// and n/p navigate matches instead of sections; ESC clears it.
+/// and n/N navigate them; ESC clears it.
 #[derive(Default)]
 pub struct SearchState {
     pub query: Option<String>,
@@ -45,7 +45,7 @@ impl App {
         pane.cursor = target;
     }
 
-    /// n/p while a search is active: jump to the next/previous match,
+    /// n/N while a search is active: jump to the next/previous match,
     /// wrapping around the buffer.
     pub(super) fn search_move(&mut self, dir: isize) {
         let Some(query) = self.search.query.clone() else {
@@ -81,13 +81,13 @@ impl App {
         }
     }
 
-    /// Enter in the search input: keep the query active for n/p navigation.
+    /// Enter in the search input: keep the query active for n/N navigation.
     pub(super) fn search_submit(&mut self, value: String) {
         if value.is_empty() {
             self.search.query = None;
         } else if let Some(pane) = self.panes.last_mut() {
             let n = pane.matches_cached(&value).len();
-            self.message = Some(format!("{n} match(es) — n/p to navigate, ESC to clear"));
+            self.message = Some(format!("{n} match(es) — n/N to navigate, ESC to clear"));
         }
     }
 

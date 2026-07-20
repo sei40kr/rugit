@@ -14,6 +14,9 @@ pub enum Command {
     Discard,
     Visit,
     Search,
+    /// Jump to the next/previous match of the active search.
+    SearchNext,
+    SearchPrev,
     Transient(Menu),
     /// Rebase-todo editing (only bound in the rebase-todo buffer).
     Todo(TodoCmd),
@@ -162,6 +165,16 @@ pub const COMMANDS: &[CommandInfo] = &[
         Command::Search,
         "search",
         "Incremental search in the buffer",
+    ),
+    ci(
+        Command::SearchNext,
+        "search-next",
+        "Jump to the next search match",
+    ),
+    ci(
+        Command::SearchPrev,
+        "search-prev",
+        "Jump to the previous search match",
     ),
     ci(
         Command::Transient(Menu::Commit),

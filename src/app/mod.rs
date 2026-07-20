@@ -18,7 +18,7 @@ pub use search::SearchState;
 use crossbeam_channel::Sender;
 use ratatui::crossterm::event::KeyEvent;
 
-use crate::command::{Command, NavCmd};
+use crate::command::Command;
 use crate::git::client::{GitClient, ProcessEntry};
 use crate::git::types::{LogEntry, StatusSnapshot};
 use crate::keymap::{KeyPress, Keymaps, PaneKind};
@@ -240,11 +240,6 @@ impl App {
         match cmd {
             Command::Quit => self.quit_or_pop(),
             Command::Refresh => self.refresh_current(),
-            // While a search is active, n/p walk matches instead of sections.
-            Command::Nav(NavCmd::NextSection) if self.search.query.is_some() => self.search_move(1),
-            Command::Nav(NavCmd::PrevSection) if self.search.query.is_some() => {
-                self.search_move(-1)
-            }
             Command::Nav(nav) => self.pane_mut(|p| p.navigate(nav, height)),
             Command::ToggleSection => self.pane_mut(|p| p.toggle_at_cursor()),
             Command::Stage => self.stage_at_point(),
@@ -254,6 +249,8 @@ impl App {
             Command::Discard => self.discard_at_point(),
             Command::Visit => self.visit_at_point(),
             Command::Search => self.start_search(),
+            Command::SearchNext => self.search_move(1),
+            Command::SearchPrev => self.search_move(-1),
             Command::Transient(menu) => self.open_transient(menu),
             Command::Todo(cmd) => self.todo_command(cmd),
             Command::Help => {

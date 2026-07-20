@@ -16,6 +16,7 @@ mod revert;
 mod stash;
 mod submodule;
 mod tag;
+mod worktree;
 
 use crate::command::Menu;
 use crate::ui::input::InputState;
@@ -280,6 +281,9 @@ impl App {
             SubmoduleAdd | SubmoduleRegister | SubmodulePopulate | SubmoduleUpdate
             | SubmoduleSync | SubmoduleUnpopulate | SubmoduleRemove => {
                 self.submodule_action(action, args)
+            }
+            WorktreeCheckout | WorktreeBranch | WorktreeMove | WorktreeDelete => {
+                self.worktree_action(action, args)
             }
         }
     }

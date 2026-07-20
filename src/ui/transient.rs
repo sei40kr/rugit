@@ -203,6 +203,18 @@ pub enum TransientAction {
     /// Opens a picker over submodules, then removes the chosen one (deinit
     /// plus `git rm`, after a y/n confirm).
     SubmoduleRemove,
+    /// Opens a path minibuffer and a branch picker, then checks out the branch
+    /// in a new worktree (`git worktree add <path> <branch>`).
+    WorktreeCheckout,
+    /// Opens minibuffers/pickers for a new branch, its start point and a path,
+    /// then creates the branch in a new worktree (`git worktree add -b`).
+    WorktreeBranch,
+    /// Opens a picker over linked worktrees and a new-path minibuffer, then
+    /// moves the worktree (`git worktree move`).
+    WorktreeMove,
+    /// Opens a picker over linked worktrees, then deletes the chosen one
+    /// (`git worktree remove`, after a y/n confirm).
+    WorktreeDelete,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1487,6 +1499,50 @@ pub static SUBMODULE: TransientDef = TransientDef {
     ],
 };
 
+// Manage linked worktrees: check out an existing branch or a new one in a
+// fresh worktree, move a worktree, or delete one. `--force` overrides git's
+// safety checks on add/move/remove.
+pub static WORKTREE: TransientDef = TransientDef {
+    title: "Worktree",
+    defaults: &[],
+    incompatible: &[],
+    groups: &[
+        GroupDef {
+            title: "Arguments",
+            items: &[Item::Switch {
+                key: "-f",
+                flag: "--force",
+                desc: "Force",
+            }],
+        },
+        GroupDef {
+            title: "Actions",
+            items: &[
+                Item::Action {
+                    key: "b",
+                    desc: "Checkout branch",
+                    action: TransientAction::WorktreeCheckout,
+                },
+                Item::Action {
+                    key: "c",
+                    desc: "Checkout new branch",
+                    action: TransientAction::WorktreeBranch,
+                },
+                Item::Action {
+                    key: "m",
+                    desc: "Move",
+                    action: TransientAction::WorktreeMove,
+                },
+                Item::Action {
+                    key: "k",
+                    desc: "Delete",
+                    action: TransientAction::WorktreeDelete,
+                },
+            ],
+        },
+    ],
+};
+
 /// Resolve a `Command::Transient(menu)` to its definition. A new menu adds
 /// one arm here and nothing in `App::dispatch`. Menus whose contents depend
 /// on repo state are swapped in `App::open_transient` (merge or rebase in
@@ -1508,6 +1564,7 @@ pub fn menu_def(menu: Menu) -> &'static TransientDef {
         Menu::Fetch => &FETCH,
         Menu::Log => &LOG,
         Menu::Submodule => &SUBMODULE,
+        Menu::Worktree => &WORKTREE,
     }
 }
 

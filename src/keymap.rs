@@ -352,6 +352,7 @@ pub fn default_keymaps() -> Keymaps {
         ("f", Transient(Menu::Fetch)),
         ("l", Transient(Menu::Log)),
         ("o", Transient(Menu::Submodule)),
+        ("W", Transient(Menu::Worktree)),
         ("y", ShowRefs),
         ("?", Help),
         ("`", ProcessLog),

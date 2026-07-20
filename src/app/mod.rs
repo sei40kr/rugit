@@ -20,7 +20,7 @@ use ratatui::crossterm::event::KeyEvent;
 
 use crate::command::Command;
 use crate::git::client::{GitClient, ProcessEntry};
-use crate::git::types::{LogEntry, StatusSnapshot};
+use crate::git::types::{LogEntry, RefEntry, StatusSnapshot};
 use crate::keymap::{KeyPress, Keymaps, PaneKind};
 use crate::theme::Theme;
 use crate::ui::input::InputState;
@@ -55,6 +55,10 @@ pub enum AppEvent {
         args: Vec<String>,
         entries: Vec<LogEntry>,
         replace: bool,
+    },
+    /// `git for-each-ref` data for the references buffer arrived.
+    RefsReady {
+        entries: Vec<RefEntry>,
     },
     /// The fs watcher saw `.git` change.
     RepoChanged,
@@ -227,6 +231,7 @@ impl App {
                 entries,
                 replace,
             } => self.on_log_ready(title, args, entries, replace),
+            AppEvent::RefsReady { entries } => self.on_refs_ready(entries),
             AppEvent::RepoChanged => self.refresh(),
         }
     }
@@ -258,6 +263,7 @@ impl App {
                 self.help_scroll = 0;
             }
             Command::ProcessLog => self.open_process_log(),
+            Command::ShowRefs => self.show_refs(),
         }
     }
 

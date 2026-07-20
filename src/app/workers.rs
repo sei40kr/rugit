@@ -4,7 +4,7 @@
 use std::thread;
 
 use crate::git::client::{display_cmd, ProcessEntry};
-use crate::git::types::{LogEntry, StatusSnapshot};
+use crate::git::types::{LogEntry, RefEntry, StatusSnapshot};
 use crate::keymap::PaneKind;
 use crate::ui::build;
 use crate::ui::pane::Pane;
@@ -117,15 +117,62 @@ impl App {
     pub(super) fn refresh_current(&mut self) {
         self.message = Some(Self::REFRESHING.into());
         if let Some(pane) = self.panes.last() {
-            if pane.kind == PaneKind::Log {
-                if let Some(args) = pane.log_args.clone() {
-                    let title = pane.title.clone();
-                    self.load_log(title, args, true);
+            match pane.kind {
+                PaneKind::Log => {
+                    if let Some(args) = pane.log_args.clone() {
+                        let title = pane.title.clone();
+                        self.load_log(title, args, true);
+                        return;
+                    }
+                }
+                PaneKind::Refs => {
+                    self.show_refs();
                     return;
                 }
+                _ => {}
             }
         }
         self.refresh();
+    }
+
+    /// Ref-row fields for `git for-each-ref`, parsed by `parse::parse_refs`.
+    const REF_FORMAT: &'static str = "--format=%(refname)\x1f%(objectname:short)\x1f%(HEAD)\x1f%(upstream:short)\x1f%(upstream:track)\x1f%(contents:subject)";
+
+    /// Read every branch/remote/tag on a worker thread and open (or refresh)
+    /// the references buffer.
+    pub(super) fn show_refs(&mut self) {
+        self.busy = Some("references".into());
+        let git = self.git.clone();
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let entries = git
+                .run(&[
+                    "for-each-ref",
+                    Self::REF_FORMAT,
+                    "--sort=-creatordate",
+                    "refs/heads",
+                    "refs/remotes",
+                    "refs/tags",
+                ])
+                .map(|o| crate::git::parse::parse_refs(&o.stdout))
+                .unwrap_or_default();
+            let _ = tx.send(AppEvent::RefsReady { entries });
+        });
+    }
+
+    /// References data arrived: open a refs buffer, or refresh the current one.
+    pub(super) fn on_refs_ready(&mut self, entries: Vec<RefEntry>) {
+        self.busy = None;
+        self.clear_refreshing();
+        let root = build::build_refs(&self.theme, &entries);
+        if self.panes.last().map(|p| p.kind) == Some(PaneKind::Refs) {
+            if let Some(pane) = self.panes.last_mut() {
+                pane.replace_tree(root);
+            }
+        } else {
+            self.panes
+                .push(Pane::new(PaneKind::Refs, "References".into(), root));
+        }
     }
 
     /// Read a log on a worker thread. `rev_args` are everything after the

@@ -22,6 +22,8 @@ pub enum Command {
     Todo(TodoCmd),
     Help,
     ProcessLog,
+    /// Open the references buffer (branches, remotes, tags).
+    ShowRefs,
 }
 
 /// Rebase-todo buffer commands. Grouped like `NavCmd` so `dispatch`
@@ -285,6 +287,11 @@ pub const COMMANDS: &[CommandInfo] = &[
         Command::ProcessLog,
         "process-log",
         "Show the git process log",
+    ),
+    ci(
+        Command::ShowRefs,
+        "show-refs",
+        "Show branches, remotes and tags",
     ),
 ];
 

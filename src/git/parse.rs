@@ -1,7 +1,7 @@
 //! Pure parsers for git plumbing/porcelain output. No I/O here — everything is
 //! unit-testable against fixture strings.
 
-use super::types::{BranchInfo, FileDiff, Hunk, LogEntry, StashInfo};
+use super::types::{BranchInfo, FileDiff, Hunk, LogEntry, RefEntry, RefKind, StashInfo};
 
 /// Result of parsing `git status --porcelain=v2 --branch -z`.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -200,6 +200,45 @@ pub fn parse_log_entries(text: &str) -> Vec<LogEntry> {
         .collect()
 }
 
+/// Parse `git for-each-ref` with fields (US, 0x1f separated):
+/// `%(refname)`, `%(objectname:short)`, `%(HEAD)`, `%(upstream:short)`,
+/// `%(upstream:track)`, `%(contents:subject)`. The full refname decides the
+/// kind and short name; `refs/remotes/*/HEAD` symbolic pointers are skipped.
+pub fn parse_refs(text: &str) -> Vec<RefEntry> {
+    text.lines()
+        .filter_map(|l| {
+            let mut f = l.split('\x1f');
+            let refname = f.next()?;
+            let hash = f.next().unwrap_or("").to_string();
+            let head = f.next().unwrap_or("");
+            let upstream = f.next().unwrap_or("").to_string();
+            let track = f.next().unwrap_or("").to_string();
+            let subject = f.next().unwrap_or("").to_string();
+            let (kind, name) = if let Some(n) = refname.strip_prefix("refs/heads/") {
+                (RefKind::LocalBranch, n)
+            } else if let Some(n) = refname.strip_prefix("refs/remotes/") {
+                if n.ends_with("/HEAD") {
+                    return None;
+                }
+                (RefKind::RemoteBranch, n)
+            } else if let Some(n) = refname.strip_prefix("refs/tags/") {
+                (RefKind::Tag, n)
+            } else {
+                return None;
+            };
+            Some(RefEntry {
+                kind,
+                name: name.to_string(),
+                hash,
+                subject,
+                upstream,
+                track,
+                is_head: head == "*",
+            })
+        })
+        .collect()
+}
+
 /// Parse `git stash list --format=%gd%x1f%s`.
 pub fn parse_stash_list(text: &str) -> Vec<StashInfo> {
     text.lines()
@@ -328,5 +367,26 @@ Binary files a/img.png and b/img.png differ
         assert_eq!(entries[0].date, "2 days ago");
         assert_eq!(entries[1].refs, "");
         assert_eq!(entries[1].subject, "plain commit");
+    }
+
+    #[test]
+    fn refs_split_by_kind_and_skip_remote_head() {
+        let raw = "refs/heads/main\x1fabc123\x1f*\x1forigin/main\x1f[ahead 1]\x1ffix: thing\n\
+                   refs/remotes/origin/main\x1fabc123\x1f\x1f\x1f\x1ffix: thing\n\
+                   refs/remotes/origin/HEAD\x1fabc123\x1f\x1f\x1f\x1f\n\
+                   refs/tags/v1.0\x1fdef456\x1f\x1f\x1f\x1frelease\n";
+        let refs = parse_refs(raw);
+        assert_eq!(refs.len(), 3, "origin/HEAD is skipped");
+        assert_eq!(refs[0].kind, RefKind::LocalBranch);
+        assert_eq!(refs[0].name, "main");
+        assert!(refs[0].is_head);
+        assert_eq!(refs[0].upstream, "origin/main");
+        assert_eq!(refs[0].track, "[ahead 1]");
+        assert_eq!(refs[1].kind, RefKind::RemoteBranch);
+        assert_eq!(refs[1].name, "origin/main");
+        assert!(!refs[1].is_head);
+        assert_eq!(refs[2].kind, RefKind::Tag);
+        assert_eq!(refs[2].name, "v1.0");
+        assert_eq!(refs[2].subject, "release");
     }
 }

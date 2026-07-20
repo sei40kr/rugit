@@ -10,7 +10,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::git::client::ProcessEntry;
 use crate::git::todo::{TodoAction, TodoEntry};
-use crate::git::types::{DiffArea, FileDiff, LogEntry, StatusSnapshot};
+use crate::git::types::{DiffArea, FileDiff, LogEntry, RefEntry, RefKind, StatusSnapshot};
 use crate::theme::Theme;
 use crate::ui::section::{Group, Section, SectionValue};
 
@@ -392,6 +392,91 @@ fn ref_spans(t: &Theme, refs: &str) -> Vec<Span<'static>> {
     out
 }
 
+/// References buffer (`y`): branches, remote-tracking branches and tags in
+/// three foldable groups. Each row is a `Commit` section keyed on the ref
+/// name, so RET (visit) shows what the ref points at and the cursor sticks to
+/// it across refreshes.
+pub fn build_refs(t: &Theme, entries: &[RefEntry]) -> Section {
+    let mut root = Section::root();
+    // Not compact: the groups (Branches/Remotes/Tags) render blank-line
+    // separated like the status buffer, rather than as one tight list.
+    root.body_fill = Some(t.header_bg);
+    root.push_body(Line::from(Span::styled(
+        "References".to_string(),
+        heading_style().fg(t.header_fg).bg(t.header_bg),
+    )));
+    for (kind, title) in [
+        (RefKind::LocalBranch, "Branches"),
+        (RefKind::RemoteBranch, "Remotes"),
+        (RefKind::Tag, "Tags"),
+    ] {
+        let group: Vec<&RefEntry> = entries.iter().filter(|e| e.kind == kind).collect();
+        if group.is_empty() {
+            continue;
+        }
+        let mut g = Section::new(
+            0,
+            &format!("refgroup:{title}"),
+            SectionValue::Text,
+            group_heading(t, format!("{title} ({})", group.len())),
+        );
+        // Align the ref names into a column sized to the widest in the group.
+        let name_col = group.iter().map(|e| e.name.width()).max().unwrap_or(0);
+        for e in group {
+            g.children.push(ref_row(t, g.id, e, name_col));
+        }
+        root.children.push(g);
+    }
+    if root.children.is_empty() {
+        root.push_body(Line::from(Span::styled(
+            "No references.".to_string(),
+            Style::new().dim(),
+        )));
+    }
+    root
+}
+
+/// One ref row: a "*" marker for the current branch, the short hash, the ref
+/// name (colored by kind), the upstream and its tracking state for branches,
+/// then the commit subject.
+fn ref_row(t: &Theme, parent_id: u64, e: &RefEntry, name_col: usize) -> Section {
+    let base = match e.kind {
+        RefKind::LocalBranch => Style::new().fg(t.branch),
+        RefKind::RemoteBranch => Style::new().fg(t.branch_remote),
+        RefKind::Tag => Style::new().fg(t.tag),
+    };
+    let name_style = if e.is_head { base.bold() } else { base };
+    let mut spans = vec![
+        Span::styled(
+            if e.is_head { "* " } else { "  " }.to_string(),
+            Style::new().fg(t.branch).bold(),
+        ),
+        Span::styled(e.hash.clone(), Style::new().fg(t.hash)),
+        Span::raw(" "),
+        Span::styled(pad_end(&e.name, name_col), name_style),
+    ];
+    if !e.upstream.is_empty() {
+        spans.push(Span::styled(
+            format!(" {}", e.upstream),
+            Style::new().fg(t.upstream),
+        ));
+    }
+    if !e.track.is_empty() {
+        spans.push(Span::styled(format!(" {}", e.track), Style::new().dim()));
+    }
+    if !e.subject.is_empty() {
+        spans.push(Span::raw(format!("  {}", e.subject)));
+    }
+    Section::new(
+        parent_id,
+        &format!("ref:{}", e.name),
+        SectionValue::Commit {
+            hash: e.name.clone(),
+        },
+        Line::from(spans),
+    )
+}
+
 /// The rebase-todo editor buffer: one commit per line, `<action> <hash>
 /// <subject>`, oldest first (the order git applies them). Each row is a
 /// `Commit` section, so RET (visit) shows the commit and the cursor sticks
@@ -600,6 +685,52 @@ mod tests {
         assert!(drop_span.style.add_modifier.contains(Modifier::CROSSED_OUT));
         // The trailing child is the dim key-hint block, not a commit.
         assert_eq!(root.children.last().unwrap().value, SectionValue::Text);
+    }
+
+    #[test]
+    fn refs_group_by_kind_and_mark_head() {
+        use crate::git::types::{RefEntry, RefKind};
+        let t = Theme::default();
+        let refs = vec![
+            RefEntry {
+                kind: RefKind::LocalBranch,
+                name: "main".into(),
+                hash: "abc".into(),
+                subject: "fix".into(),
+                upstream: "origin/main".into(),
+                track: "[ahead 1]".into(),
+                is_head: true,
+            },
+            RefEntry {
+                kind: RefKind::Tag,
+                name: "v1.0".into(),
+                hash: "def".into(),
+                subject: "release".into(),
+                upstream: String::new(),
+                track: String::new(),
+                is_head: false,
+            },
+        ];
+        let root = build_refs(&t, &refs);
+        // Two non-empty groups (Branches, Tags); Remotes is dropped.
+        assert_eq!(root.children.len(), 2);
+        assert!(root.children[0]
+            .heading
+            .to_string()
+            .starts_with("Branches (1)"));
+        let branch_row = &root.children[0].children[0];
+        assert_eq!(
+            branch_row.value,
+            SectionValue::Commit {
+                hash: "main".into()
+            }
+        );
+        // The current branch is marked and its upstream/track shown.
+        let text = branch_row.heading.to_string();
+        assert!(text.contains("* "), "got {text:?}");
+        assert!(text.contains("origin/main"), "got {text:?}");
+        assert!(text.contains("[ahead 1]"), "got {text:?}");
+        assert!(root.children[1].heading.to_string().starts_with("Tags (1)"));
     }
 
     #[test]

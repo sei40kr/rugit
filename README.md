@@ -24,6 +24,8 @@ exactly as they do on the command line.
   reset, stash, tag, remote, push, pull, fetch, and log popups with
   Magit-style switches (`-a` → `--all`, `-f` → `--force-with-lease`, ...),
   value arguments (`--author=...`), and git-config variables
+- **References buffer** — `y` lists branches, remote-tracking branches, and
+  tags in foldable groups, each showing its upstream tracking state
 - **Pickers and prompts** — checkout from a filterable branch picker; type a
   name to create branches; unmatched picker input is passed through, so tags
   and SHAs work too
@@ -71,6 +73,7 @@ The bindings are vim-flavored: `j`/`k` move, `g` and `z` are prefixes,
 | `S` / `U` | stage all tracked / unstage all |
 | `x` | discard the change at point (with confirmation) |
 | `RET` | show the commit / stash at point |
+| `y` | references buffer (branches, remotes, tags) |
 | `/` | incremental search (`RET` to confirm, `ESC` to clear) |
 | `n` / `N` | next / previous search match |
 | `` ` `` | git process log |

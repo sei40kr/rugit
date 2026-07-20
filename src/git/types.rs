@@ -63,6 +63,35 @@ pub struct LogEntry {
     pub date: String,
 }
 
+/// What kind of ref a `RefEntry` names, deciding its group and color in the
+/// references buffer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefKind {
+    LocalBranch,
+    RemoteBranch,
+    Tag,
+}
+
+/// One row of the references buffer: a branch, remote-tracking branch or tag
+/// with the commit it points at and (for branches) its upstream tracking
+/// state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RefEntry {
+    pub kind: RefKind,
+    /// Short name, e.g. "main", "origin/main", "v1.0".
+    pub name: String,
+    /// Abbreviated object id.
+    pub hash: String,
+    /// Commit (or annotated-tag) subject.
+    pub subject: String,
+    /// `upstream:short` — the tracked branch, empty when none.
+    pub upstream: String,
+    /// `upstream:track` — e.g. "[ahead 1, behind 2]" or "[gone]", empty when none.
+    pub track: String,
+    /// The currently checked-out branch (`%(HEAD)` == "*").
+    pub is_head: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StashInfo {
     pub index: usize,

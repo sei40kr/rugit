@@ -255,6 +255,8 @@ pub enum PaneKind {
     Revision,
     Log,
     ProcessLog,
+    /// Branches, remote-tracking branches and tags (Magit's `magit-show-refs`).
+    Refs,
     /// The interactive-rebase todo editor (Magit's git-rebase-mode).
     RebaseTodo,
 }
@@ -349,6 +351,7 @@ pub fn default_keymaps() -> Keymaps {
         ("F", Transient(Menu::Pull)),
         ("f", Transient(Menu::Fetch)),
         ("l", Transient(Menu::Log)),
+        ("y", ShowRefs),
         ("?", Help),
         ("`", ProcessLog),
     ] {

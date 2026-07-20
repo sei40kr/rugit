@@ -187,6 +187,22 @@ pub enum TransientAction {
     ReflogOther,
     /// Reflog of HEAD itself.
     ReflogHead,
+    /// Opens minibuffers for the URL and optional path, then adds a submodule.
+    SubmoduleAdd,
+    /// Register submodules in `.git/config` (`git submodule init`).
+    SubmoduleRegister,
+    /// Register and clone missing submodules (`git submodule update --init`).
+    SubmodulePopulate,
+    /// Check out the recorded commit in every submodule (`git submodule update`).
+    SubmoduleUpdate,
+    /// Copy the recorded URLs into `.git/config` (`git submodule sync`).
+    SubmoduleSync,
+    /// Opens a picker over submodules, then unregisters the chosen one
+    /// (`git submodule deinit`).
+    SubmoduleUnpopulate,
+    /// Opens a picker over submodules, then removes the chosen one (deinit
+    /// plus `git rm`, after a y/n confirm).
+    SubmoduleRemove,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1400,6 +1416,77 @@ pub static LOG: TransientDef = TransientDef {
     ],
 };
 
+// Add, register, populate, update, synchronize, unpopulate and remove
+// submodules. `--force`/`--recursive`/`--no-fetch` are forwarded only to the
+// subcommands git accepts them on (see `App::submodule_action`).
+pub static SUBMODULE: TransientDef = TransientDef {
+    title: "Submodule",
+    defaults: &[],
+    incompatible: &[],
+    groups: &[
+        GroupDef {
+            title: "Arguments",
+            items: &[
+                Item::Switch {
+                    key: "-f",
+                    flag: "--force",
+                    desc: "Force",
+                },
+                Item::Switch {
+                    key: "-r",
+                    flag: "--recursive",
+                    desc: "Recursive",
+                },
+                Item::Switch {
+                    key: "-N",
+                    flag: "--no-fetch",
+                    desc: "Do not fetch",
+                },
+            ],
+        },
+        GroupDef {
+            title: "Actions",
+            items: &[
+                Item::Action {
+                    key: "a",
+                    desc: "Add",
+                    action: TransientAction::SubmoduleAdd,
+                },
+                Item::Action {
+                    key: "r",
+                    desc: "Register",
+                    action: TransientAction::SubmoduleRegister,
+                },
+                Item::Action {
+                    key: "p",
+                    desc: "Populate",
+                    action: TransientAction::SubmodulePopulate,
+                },
+                Item::Action {
+                    key: "u",
+                    desc: "Update",
+                    action: TransientAction::SubmoduleUpdate,
+                },
+                Item::Action {
+                    key: "s",
+                    desc: "Synchronize",
+                    action: TransientAction::SubmoduleSync,
+                },
+                Item::Action {
+                    key: "d",
+                    desc: "Unpopulate",
+                    action: TransientAction::SubmoduleUnpopulate,
+                },
+                Item::Action {
+                    key: "k",
+                    desc: "Remove",
+                    action: TransientAction::SubmoduleRemove,
+                },
+            ],
+        },
+    ],
+};
+
 /// Resolve a `Command::Transient(menu)` to its definition. A new menu adds
 /// one arm here and nothing in `App::dispatch`. Menus whose contents depend
 /// on repo state are swapped in `App::open_transient` (merge or rebase in
@@ -1420,6 +1507,7 @@ pub fn menu_def(menu: Menu) -> &'static TransientDef {
         Menu::Pull => &PULL,
         Menu::Fetch => &FETCH,
         Menu::Log => &LOG,
+        Menu::Submodule => &SUBMODULE,
     }
 }
 

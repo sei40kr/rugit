@@ -78,6 +78,7 @@ pub enum Menu {
     Pull,
     Fetch,
     Log,
+    Submodule,
 }
 
 pub struct CommandInfo {
@@ -232,6 +233,11 @@ pub const COMMANDS: &[CommandInfo] = &[
         "Open the fetch menu",
     ),
     ci(Command::Transient(Menu::Log), "log", "Open the log menu"),
+    ci(
+        Command::Transient(Menu::Submodule),
+        "submodule",
+        "Open the submodule menu",
+    ),
     ci(
         Command::Todo(TodoCmd::Pick),
         "todo-pick",

@@ -98,6 +98,7 @@ Each of these opens a transient menu:
 | `F` | pull |
 | `f` | fetch |
 | `l` | log |
+| `o` | submodule |
 
 Inside a transient menu, keys like `-a` toggle switches and highlighted
 actions run with the enabled flags.

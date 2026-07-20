@@ -98,6 +98,12 @@ pub enum PendingAction {
         args: Vec<String>,
         stdin: Option<String>,
     },
+    /// A sequence of git commands run in order, stopping at the first failure
+    /// (e.g. submodule removal: deinit, then `git rm`).
+    GitSeq {
+        desc: String,
+        cmds: Vec<Vec<String>>,
+    },
     DeletePaths(Vec<String>),
 }
 

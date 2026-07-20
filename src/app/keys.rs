@@ -127,6 +127,7 @@ impl App {
         ) {
             match confirm.action {
                 PendingAction::Git { desc, args, stdin } => self.run_git_bg(desc, args, stdin),
+                PendingAction::GitSeq { desc, cmds } => self.run_git_seq_bg(desc, cmds),
                 PendingAction::DeletePaths(paths) => {
                     let mut deleted = 0;
                     let mut last_err = None;

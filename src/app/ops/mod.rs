@@ -14,6 +14,7 @@ mod remote;
 mod reset;
 mod revert;
 mod stash;
+mod submodule;
 mod tag;
 
 use crate::command::Menu;
@@ -276,6 +277,10 @@ impl App {
             }
             LogCurrent | LogRelated | LogLocalBranches | LogAllBranches | LogAll | LogOther
             | ReflogCurrent | ReflogOther | ReflogHead => self.log_action(action, args),
+            SubmoduleAdd | SubmoduleRegister | SubmodulePopulate | SubmoduleUpdate
+            | SubmoduleSync | SubmoduleUnpopulate | SubmoduleRemove => {
+                self.submodule_action(action, args)
+            }
         }
     }
 

@@ -10,7 +10,8 @@ hooks, commit signing, credential helpers, and your git config all behave
 exactly as they do on the command line.
 
 > **Status**: early (v0.1). The core workflow — stage/unstage/discard,
-> commit, branch, push/pull/fetch, revision view, search — works. See
+> commit, branch, merge, rebase (including interactive), stash,
+> push/pull/fetch, log and revision views, search — works. See
 > [Roadmap](#roadmap) for what's missing.
 
 ## Features
@@ -19,16 +20,19 @@ exactly as they do on the command line.
   diffs, stashes, and recent commits as a tree of collapsible sections
 - **Stage at any granularity** — `s` stages whatever is at point: a file, a
   hunk, or a **single diff line**; `u` unstages the same way
-- **Transient menus** — commit / branch / push / pull / fetch popups with
-  Magit-style switches (`-a` → `--all`, `-f` → `--force-with-lease`, ...)
+- **Transient menus** — commit, branch, merge, rebase, cherry-pick, revert,
+  reset, stash, tag, remote, push, pull, fetch, and log popups with
+  Magit-style switches (`-a` → `--all`, `-f` → `--force-with-lease`, ...),
+  value arguments (`--author=...`), and git-config variables
 - **Pickers and prompts** — checkout from a filterable branch picker; type a
   name to create branches; unmatched picker input is passed through, so tags
   and SHAs work too
-- **Incremental search** — `/` with live highlighting and smart-case; `n`/`p`
+- **Incremental search** — `/` with live highlighting and smart-case; `n`/`N`
   jump between matches
-- **Revision & stash view** — `RET` on a commit or stash opens its diff
+- **Log & revision views** — `l` opens the log menu; `RET` on a commit or
+  stash opens its diff
 - **Real git, transparently** — every command rugit runs is logged to a
-  process buffer (`$`); commit messages open in your `$GIT_EDITOR`
+  process buffer (`` ` ``); commit messages open in your `$GIT_EDITOR`
 - **Auto-refresh** — the status buffer updates when `.git` changes, even from
   other terminals
 - **Configurable** — remap any key, restyle every color, all from one TOML
@@ -50,28 +54,55 @@ Run `rugit` anywhere inside a git repository.
 
 ### Default key bindings
 
+The bindings are vim-flavored: `j`/`k` move, `g` and `z` are prefixes,
+`n`/`N` step through search matches.
+
 | Key | Action |
 |---|---|
 | `j` / `k`, arrows | move cursor |
-| `n` / `p` | next / previous section (match, while a search is active) |
-| `^` | parent section |
-| `TAB` | collapse / expand section |
+| `C-j` / `C-k` (also `g j` / `g k`) | next / previous section |
+| `g h` or `^` | parent section |
+| `TAB` (also `z a`) | collapse / expand section |
 | `C-d` / `C-u`, `PgDn` / `PgUp` | scroll half page |
-| `g` | refresh |
+| `C-f` / `C-b` | scroll full page |
+| `g g` / `G`, `Home` / `End` | go to top / bottom |
+| `g r` | refresh |
 | `s` / `u` | stage / unstage the thing at point (file, hunk, or line) |
 | `S` / `U` | stage all tracked / unstage all |
 | `x` | discard the change at point (with confirmation) |
 | `RET` | show the commit / stash at point |
-| `c` | commit menu |
-| `b` | branch menu (checkout picker, create) |
-| `P` / `F` / `f` | push / pull / fetch menus |
 | `/` | incremental search (`RET` to confirm, `ESC` to clear) |
-| `$` | git process log |
+| `n` / `N` | next / previous search match |
+| `` ` `` | git process log |
 | `?` | help (scrollable) |
 | `q` | close buffer / quit |
 
+Each of these opens a transient menu:
+
+| Key | Menu |
+|---|---|
+| `c` | commit |
+| `b` | branch |
+| `m` | merge |
+| `r` | rebase |
+| `A` | cherry-pick |
+| `_` | revert |
+| `O` | reset |
+| `Z` | stash |
+| `t` | tag |
+| `M` | remote |
+| `p` / `P` | push |
+| `F` | pull |
+| `f` | fetch |
+| `l` | log |
+
 Inside a transient menu, keys like `-a` toggle switches and highlighted
 actions run with the enabled flags.
+
+During an interactive rebase, the todo buffer has its own keys:
+`p` / `r` / `e` / `s` / `f` / `d` set the action for the commit at point
+(pick / reword / edit / squash / fixup / drop), `M-j` / `M-k` move it, and
+`C-c C-c` / `C-c C-k` confirm or abort the rebase.
 
 ## Configuration
 
@@ -82,8 +113,8 @@ is optional; invalid entries produce a startup warning instead of an error.
 scrolloff = 3
 
 [keys.global]
-"g"   = "refresh"
-"P p" = "push"        # space-separated key sequences are supported
+"g r" = "refresh"     # space-separated key sequences are supported
+"P p" = "push"
 
 [keys.status]
 "s" = "stage"
@@ -106,12 +137,9 @@ lives in [CLAUDE.md](CLAUDE.md).
 
 ## Roadmap
 
-- Log buffer
-- Rebase / stash / merge transients; branch rename & delete
 - Region selection for multi-line staging
 - Word-level diff highlighting and syntax highlighting
-- Value-taking transient arguments (`--set-upstream=<value>`) and persisted
-  switch defaults
+- Persisted transient switch defaults
 
 ## License
 

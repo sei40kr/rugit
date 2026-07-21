@@ -76,9 +76,10 @@ fn draw_pane(f: &mut Frame, app: &mut App, area: Rect) {
         .iter()
         .enumerate()
         .map(|(i, fl)| {
+            let sanitized = sanitize_line(&fl.line);
             let mut content = match &fl.margin {
-                Some(m) => with_margin(&fl.line, m, area.width),
-                None => (*fl.line).clone(),
+                Some(m) => with_margin(&sanitized, &sanitize_line(m), area.width),
+                None => sanitized,
             };
             if let Some(bg) = fl.fill_bg {
                 content = fill_background(content, bg, area.width);
@@ -95,6 +96,67 @@ fn draw_pane(f: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
     f.render_widget(Paragraph::new(Text::from(lines)), area);
+}
+
+/// Columns per tab stop when expanding tabs for display.
+const TAB_STOP: usize = 8;
+
+/// Rewrite control characters into a printable form: tabs expand to the next
+/// tab stop, C0 controls and DEL (a CR left by a CRLF diff, a stray ESC in
+/// command output) become caret notation (`^M`, `^[`, `^?`), and any other
+/// non-printable character becomes `?`. A raw control byte in a cell is acted
+/// on by the terminal (a tab jumps the cursor without erasing) while ratatui's
+/// model advances a single column, so every later diff-update lands on
+/// desynced cells and stale content from the previous frame survives on
+/// screen.
+fn sanitize_line(line: &Line<'static>) -> Line<'static> {
+    if !line
+        .spans
+        .iter()
+        .any(|s| s.content.chars().any(char::is_control))
+    {
+        return line.clone();
+    }
+    let mut col = 0usize;
+    let spans: Vec<Span<'static>> = line
+        .spans
+        .iter()
+        .map(|span| {
+            let mut out = String::with_capacity(span.content.len());
+            for c in span.content.chars() {
+                match c {
+                    '\t' => {
+                        let n = TAB_STOP - col % TAB_STOP;
+                        for _ in 0..n {
+                            out.push(' ');
+                        }
+                        col += n;
+                    }
+                    '\x7f' => {
+                        out.push_str("^?");
+                        col += 2;
+                    }
+                    c if (c as u32) < 0x20 => {
+                        out.push('^');
+                        // 0x00..0x20 offset by 0x40 is always a valid char
+                        // ('@'..'_'), e.g. CR -> M, ESC -> [.
+                        out.push(char::from_u32(c as u32 + 0x40).unwrap_or('?'));
+                        col += 2;
+                    }
+                    c if c.is_control() => {
+                        out.push('?');
+                        col += 1;
+                    }
+                    c => {
+                        out.push(c);
+                        col += UnicodeWidthChar::width(c).unwrap_or(0);
+                    }
+                }
+            }
+            Span::styled(out, span.style)
+        })
+        .collect();
+    Line::from(spans)
 }
 
 /// One blank column kept at the far right so the margin never touches the edge.
@@ -303,8 +365,10 @@ fn draw_status_bar(f: &mut Frame, app: &mut App, area: Rect) {
     }
 
     let left_width = area.width.saturating_sub(right.len() as u16);
+    // The message can carry raw git output (tabs, newlines in stderr) —
+    // sanitize so no control byte reaches the terminal.
     f.render_widget(
-        Paragraph::new(Line::from(left)).style(base),
+        Paragraph::new(sanitize_line(&Line::from(left))).style(base),
         Rect::new(area.x, area.y, left_width, 1),
     );
     if !right.is_empty() {
@@ -323,6 +387,9 @@ fn draw_bottom_panel(
     title: &str,
     lines: Vec<Line<'static>>,
 ) {
+    // Picker candidates include paths and other repo-controlled strings —
+    // sanitize so no control byte reaches the terminal.
+    let lines: Vec<Line<'static>> = lines.iter().map(sanitize_line).collect();
     let height = (lines.len() as u16 + 2).min(screen.height.saturating_sub(2));
     let area = Rect::new(
         screen.x,
@@ -462,6 +529,52 @@ mod tests {
         // width 15 leaves no room for content + margin; margin is dropped.
         let out = with_margin(&content, &margin, 15);
         assert_eq!(out.to_string(), "abcdef");
+    }
+
+    #[test]
+    fn sanitize_expands_tabs_to_tab_stops() {
+        // Tab stops depend on the column: "a" leaves col 1, so the tab pads 7.
+        let out = sanitize_line(&Line::from("a\tb".to_string()));
+        assert_eq!(out.to_string(), "a       b");
+        // A tab right on a stop advances a full TAB_STOP.
+        let out = sanitize_line(&Line::from("12345678\tx".to_string()));
+        assert_eq!(out.to_string(), "12345678        x");
+    }
+
+    #[test]
+    fn sanitize_tab_stops_count_display_columns_of_wide_glyphs() {
+        // "日" is 2 columns, so the tab expands 6 to reach column 8.
+        let out = sanitize_line(&Line::from("日\tx".to_string()));
+        assert_eq!(out.to_string(), "日      x");
+    }
+
+    #[test]
+    fn sanitize_tab_column_tracks_across_spans() {
+        let line = Line::from(vec![
+            Span::raw("abc".to_string()),
+            Span::raw("\tx".to_string()),
+        ]);
+        // col 3 at the span boundary; the tab pads 5 to reach column 8.
+        assert_eq!(sanitize_line(&line).to_string(), "abc     x");
+    }
+
+    #[test]
+    fn sanitize_carets_control_chars_and_keeps_style() {
+        let style = Style::new().fg(Color::Green);
+        let line = Line::from(Span::styled("+crlf line\r".to_string(), style));
+        let out = sanitize_line(&line);
+        assert_eq!(out.to_string(), "+crlf line^M");
+        assert!(out.spans.iter().all(|s| s.style.fg == Some(Color::Green)));
+        let out = sanitize_line(&Line::from("\x1b[31mred\x7f".to_string()));
+        assert_eq!(out.to_string(), "^[[31mred^?");
+    }
+
+    #[test]
+    fn sanitize_leaves_clean_lines_untouched() {
+        let line = Line::from("plain 日本語 text".to_string());
+        let out = sanitize_line(&line);
+        assert_eq!(out.to_string(), "plain 日本語 text");
+        assert_eq!(out.spans.len(), line.spans.len());
     }
 
     #[test]

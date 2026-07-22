@@ -221,10 +221,9 @@ pub fn parse_refs(text: &str) -> Vec<RefEntry> {
                     return None;
                 }
                 (RefKind::RemoteBranch, n)
-            } else if let Some(n) = refname.strip_prefix("refs/tags/") {
-                (RefKind::Tag, n)
             } else {
-                return None;
+                let n = refname.strip_prefix("refs/tags/")?;
+                (RefKind::Tag, n)
             };
             Some(RefEntry {
                 kind,

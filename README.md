@@ -66,9 +66,14 @@ The bindings are vim-flavored: `j`/`k` move, `g` and `z` are prefixes,
 | Key | Action |
 |---|---|
 | `j` / `k`, arrows | move cursor |
-| `C-j` / `C-k` (also `g j` / `g k`) | next / previous section |
+| `C-j` / `C-k` (also `g j` / `g k`, `z j` / `z k`) | next / previous section |
 | `g h` or `^` | parent section |
 | `TAB` (also `z a`) | collapse / expand section |
+| `z A` | toggle section recursively |
+| `z o` / `z c` | open / close section (`z c` again closes the parent) |
+| `z O` / `z C` | open / close section recursively |
+| `z r` / `z m` | open / close one fold level |
+| `z R` / `z M` | open / close all sections |
 | `C-d` / `C-u`, `PgDn` / `PgUp` | scroll half page |
 | `C-f` / `C-b` | scroll full page |
 | `g g` / `G`, `Home` / `End` | go to top / bottom |

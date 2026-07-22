@@ -260,7 +260,7 @@ impl App {
             Command::Quit => self.quit_or_pop(),
             Command::Refresh => self.refresh_current(),
             Command::Nav(nav) => self.pane_mut(|p| p.navigate(nav, height)),
-            Command::ToggleSection => self.pane_mut(|p| p.toggle_at_cursor()),
+            Command::Fold(fold) => self.pane_mut(|p| p.fold(fold)),
             Command::Stage => self.stage_at_point(),
             Command::Unstage => self.unstage_at_point(),
             Command::StageAll => self.run_git_bg("stage all".into(), svec(&["add", "-u"]), None),

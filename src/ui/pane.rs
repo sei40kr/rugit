@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use crate::command::NavCmd;
+use crate::command::{FoldCmd, NavCmd};
 use crate::git::todo::TodoEntry;
 use crate::git::types::{DiffArea, FileDiff};
 use crate::keymap::PaneKind;
@@ -176,6 +176,24 @@ impl Pane {
         }
     }
 
+    // ---- folding ---------------------------------------------------------
+
+    /// Route a grouped fold command (vim's `z` family).
+    pub fn fold(&mut self, cmd: FoldCmd) {
+        match cmd {
+            FoldCmd::Toggle => self.toggle_at_cursor(),
+            FoldCmd::ToggleRec => self.toggle_rec_at_cursor(),
+            FoldCmd::Open => self.set_fold_at_cursor(false, false),
+            FoldCmd::OpenRec => self.set_fold_at_cursor(false, true),
+            FoldCmd::Close => self.close_at_cursor(),
+            FoldCmd::CloseRec => self.set_fold_at_cursor(true, true),
+            FoldCmd::OpenAll => self.fold_all(false),
+            FoldCmd::CloseAll => self.fold_all(true),
+            FoldCmd::OpenLevel => self.open_one_level(),
+            FoldCmd::CloseLevel => self.close_one_level(),
+        }
+    }
+
     pub fn toggle_at_cursor(&mut self) {
         let Some(cur) = self.current() else { return };
         let path = cur.path.clone();
@@ -187,18 +205,114 @@ impl Pane {
         }
         sec.collapsed = !sec.collapsed;
         let id = sec.id;
+        self.reflatten(Some(id));
+    }
+
+    /// `zA`: toggle the section at point, applying the new state to all of
+    /// its descendants as well.
+    fn toggle_rec_at_cursor(&mut self) {
+        let Some(cur) = self.current() else { return };
+        let path = cur.path.clone();
+        let Some(sec) = self.root.at_path_mut(&path) else {
+            return;
+        };
+        if !sec.is_foldable() {
+            return;
+        }
+        let collapsed = !sec.collapsed;
+        set_collapsed_rec(sec, collapsed);
+        let id = sec.id;
+        self.reflatten(Some(id));
+    }
+
+    /// `zo`/`zO`/`zC`: set the collapse state of the section at point
+    /// (recursively for the capital variants). Closing parks the cursor on
+    /// the section's heading.
+    fn set_fold_at_cursor(&mut self, collapsed: bool, recursive: bool) {
+        let Some(cur) = self.current() else { return };
+        let path = cur.path.clone();
+        let Some(sec) = self.root.at_path_mut(&path) else {
+            return;
+        };
+        if !sec.is_foldable() {
+            return;
+        }
+        if recursive {
+            set_collapsed_rec(sec, collapsed);
+        } else {
+            sec.collapsed = collapsed;
+        }
+        let focus = collapsed.then_some(sec.id);
+        self.reflatten(focus);
+    }
+
+    /// `zc`: close the nearest enclosing open section — the one at point,
+    /// or its parent when point is already on a closed heading (vim's
+    /// repeated-`zc` behavior).
+    fn close_at_cursor(&mut self) {
+        let Some(cur) = self.current() else { return };
+        let mut path = cur.path.clone();
+        while !path.is_empty() {
+            let Some(sec) = self.root.at_path_mut(&path) else {
+                return;
+            };
+            if sec.is_foldable() && !sec.collapsed {
+                sec.collapsed = true;
+                let id = sec.id;
+                self.reflatten(Some(id));
+                return;
+            }
+            path.pop();
+        }
+    }
+
+    /// `zR`/`zM`: open or close every foldable section in the buffer.
+    fn fold_all(&mut self, collapsed: bool) {
+        for child in &mut self.root.children {
+            set_collapsed_rec(child, collapsed);
+        }
+        self.reflatten(None);
+    }
+
+    /// `zr`: open every closed section at the shallowest depth that still
+    /// has one visible.
+    fn open_one_level(&mut self) {
+        let Some(depth) = min_closed_depth(&self.root, 0) else {
+            return;
+        };
+        set_collapsed_at_depth(&mut self.root, 0, depth, false);
+        self.reflatten(None);
+    }
+
+    /// `zm`: close every section at the deepest depth that still has an
+    /// open one visible.
+    fn close_one_level(&mut self) {
+        let depth = max_open_depth(&self.root, 0);
+        if depth == 0 {
+            return;
+        }
+        set_collapsed_at_depth(&mut self.root, 0, depth, true);
+        self.reflatten(None);
+    }
+
+    /// Rebuild `flat` after collapse flags changed. With `focus`, park the
+    /// cursor on that section's heading; otherwise restore it by identity
+    /// (falling back to the nearest visible ancestor's heading).
+    fn reflatten(&mut self, focus: Option<SectionId>) {
+        let memo = self.memoize_cursor();
         self.flat = flatten(&self.root);
         self.search_cache = None;
-        // Keep the cursor on the toggled section's heading.
-        if let Some(i) = self
-            .flat
-            .iter()
-            .position(|f| f.is_heading && f.section_id == id)
-        {
-            self.cursor = i;
-        } else {
-            self.cursor = self.cursor.min(self.flat.len().saturating_sub(1));
+        if let Some(id) = focus {
+            if let Some(i) = self
+                .flat
+                .iter()
+                .position(|f| f.is_heading && f.section_id == id)
+            {
+                self.cursor = i;
+                return;
+            }
         }
+        self.restore_cursor(memo);
     }
 
     // ---- search ----------------------------------------------------------
@@ -322,6 +436,68 @@ impl Pane {
     }
 }
 
+/// Set the collapse state of `s` and every descendant (foldable ones only —
+/// the flag is meaningless on leaves).
+fn set_collapsed_rec(s: &mut Section, collapsed: bool) {
+    if s.is_foldable() {
+        s.collapsed = collapsed;
+    }
+    for c in &mut s.children {
+        set_collapsed_rec(c, collapsed);
+    }
+}
+
+/// Deepest depth (root children = 1) with an open foldable section that is
+/// not hidden inside a collapsed ancestor. 0 when everything is folded.
+fn max_open_depth(s: &Section, depth: usize) -> usize {
+    let mut best = 0;
+    for c in &s.children {
+        if c.collapsed {
+            continue;
+        }
+        if c.is_foldable() {
+            best = best.max(depth + 1);
+        }
+        best = best.max(max_open_depth(c, depth + 1));
+    }
+    best
+}
+
+/// Shallowest depth with a closed section whose heading is visible (no
+/// collapsed ancestor). `None` when every visible section is open.
+fn min_closed_depth(s: &Section, depth: usize) -> Option<usize> {
+    let mut best: Option<usize> = None;
+    for c in &s.children {
+        let d = if c.collapsed && c.is_foldable() {
+            Some(depth + 1)
+        } else if c.collapsed {
+            None
+        } else {
+            min_closed_depth(c, depth + 1)
+        };
+        best = match (best, d) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
+    }
+    best
+}
+
+/// Set the collapse state of every foldable section at exactly `target`
+/// depth (root children = 1), visible or not — matching how vim's
+/// `foldlevel` applies uniformly across the buffer.
+fn set_collapsed_at_depth(s: &mut Section, depth: usize, target: usize, collapsed: bool) {
+    for c in &mut s.children {
+        if depth + 1 == target {
+            if c.is_foldable() {
+                c.collapsed = collapsed;
+            }
+        } else {
+            set_collapsed_at_depth(c, depth + 1, target, collapsed);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -393,6 +569,83 @@ mod tests {
         assert!(pane.current().unwrap().is_heading);
         pane.toggle_at_cursor();
         assert_eq!(pane.line_count(), 4);
+    }
+
+    /// root ── A (body a0) ── B (body b0, b1)
+    ///      └── C (body c0)
+    /// flat when fully open: A a0 B b0 b1 <sp> C c0
+    fn nested_root() -> Section {
+        let mut root = Section::root();
+        let mut a = Section::new(0, "s:A", SectionValue::Group(Group::Unstaged), "A".into());
+        a.push_body("a0".into());
+        let mut b = Section::new(a.id, "s:B", SectionValue::Text, "B".into());
+        b.push_body("b0".into());
+        b.push_body("b1".into());
+        a.children.push(b);
+        root.children.push(a);
+        let mut c = Section::new(0, "s:C", SectionValue::Group(Group::Staged), "C".into());
+        c.push_body("c0".into());
+        root.children.push(c);
+        root
+    }
+
+    #[test]
+    fn fold_close_walks_up_to_the_enclosing_open_section() {
+        let mut pane = Pane::new(PaneKind::Status, "t".into(), nested_root());
+        pane.cursor = 3; // b0
+        pane.fold(FoldCmd::Close); // closes B, cursor on its heading
+        assert_eq!(pane.current().unwrap().line.to_string(), "B");
+        pane.fold(FoldCmd::Close); // B already closed → closes A
+        assert_eq!(pane.current().unwrap().line.to_string(), "A");
+        assert_eq!(pane.line_count(), 4); // A <sp> C c0
+    }
+
+    #[test]
+    fn fold_open_is_shallow_and_open_rec_is_deep() {
+        let mut pane = Pane::new(PaneKind::Status, "t".into(), nested_root());
+        pane.fold(FoldCmd::CloseRec); // A and B closed
+        assert_eq!(pane.line_count(), 4); // A <sp> C c0
+        pane.fold(FoldCmd::Open); // reopens A only; B stays closed
+        assert_eq!(pane.line_count(), 6); // A a0 B <sp> C c0
+        pane.fold(FoldCmd::CloseRec);
+        pane.fold(FoldCmd::OpenRec); // reopens A and B
+        assert_eq!(pane.line_count(), 8);
+    }
+
+    #[test]
+    fn fold_toggle_rec_round_trips() {
+        let mut pane = Pane::new(PaneKind::Status, "t".into(), nested_root());
+        pane.fold(FoldCmd::ToggleRec);
+        assert_eq!(pane.line_count(), 4); // A <sp> C c0
+        assert_eq!(pane.current().unwrap().line.to_string(), "A");
+        pane.fold(FoldCmd::ToggleRec);
+        assert_eq!(pane.line_count(), 8);
+    }
+
+    #[test]
+    fn fold_close_all_parks_cursor_on_visible_ancestor() {
+        let mut pane = Pane::new(PaneKind::Status, "t".into(), nested_root());
+        pane.cursor = 4; // b1
+        pane.fold(FoldCmd::CloseAll);
+        assert_eq!(pane.line_count(), 3); // A <sp> C
+        assert_eq!(pane.current().unwrap().line.to_string(), "A");
+        pane.fold(FoldCmd::OpenAll);
+        assert_eq!(pane.line_count(), 8);
+    }
+
+    #[test]
+    fn fold_levels_step_one_depth_at_a_time() {
+        let mut pane = Pane::new(PaneKind::Status, "t".into(), nested_root());
+        pane.fold(FoldCmd::CloseLevel); // deepest open level: B (depth 2)
+        assert_eq!(pane.line_count(), 6); // A a0 B <sp> C c0
+        pane.fold(FoldCmd::CloseLevel); // depth 1: A and C
+        assert_eq!(pane.line_count(), 3); // A <sp> C
+        pane.fold(FoldCmd::CloseLevel); // nothing open — no-op
+        assert_eq!(pane.line_count(), 3);
+        pane.fold(FoldCmd::OpenLevel); // depth 1 reopens, B stays closed
+        assert_eq!(pane.line_count(), 6);
+        pane.fold(FoldCmd::OpenLevel); // depth 2: B
+        assert_eq!(pane.line_count(), 8);
     }
 
     #[test]

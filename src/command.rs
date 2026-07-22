@@ -6,7 +6,7 @@ pub enum Command {
     Quit,
     Refresh,
     Nav(NavCmd),
-    ToggleSection,
+    Fold(FoldCmd),
     Stage,
     Unstage,
     StageAll,
@@ -62,6 +62,33 @@ pub enum NavCmd {
     NextSection,
     PrevSection,
     ParentSection,
+}
+
+/// Fold operations (vim's `z` family). Grouped like `NavCmd` so `dispatch`
+/// forwards them wholesale to `Pane::fold` instead of growing one arm per
+/// operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FoldCmd {
+    /// `za` — toggle the fold at point.
+    Toggle,
+    /// `zA` — toggle the fold at point, applying the new state recursively.
+    ToggleRec,
+    /// `zo` — open the fold at point.
+    Open,
+    /// `zO` — open the fold at point and all folds inside it.
+    OpenRec,
+    /// `zc` — close the fold at point (the enclosing one when already closed).
+    Close,
+    /// `zC` — close the fold at point and all folds inside it.
+    CloseRec,
+    /// `zR` — open every fold in the buffer.
+    OpenAll,
+    /// `zM` — close every fold in the buffer.
+    CloseAll,
+    /// `zr` — open the shallowest closed fold level.
+    OpenLevel,
+    /// `zm` — close the deepest open fold level.
+    CloseLevel,
 }
 
 /// Transient menus. `ui::transient::menu_def` maps each to its definition,
@@ -147,9 +174,54 @@ pub const COMMANDS: &[CommandInfo] = &[
         "Jump to parent section",
     ),
     ci(
-        Command::ToggleSection,
+        Command::Fold(FoldCmd::Toggle),
         "toggle-section",
         "Collapse/expand section at point",
+    ),
+    ci(
+        Command::Fold(FoldCmd::ToggleRec),
+        "fold-toggle-rec",
+        "Toggle the fold at point recursively",
+    ),
+    ci(
+        Command::Fold(FoldCmd::Open),
+        "fold-open",
+        "Open the fold at point",
+    ),
+    ci(
+        Command::Fold(FoldCmd::OpenRec),
+        "fold-open-rec",
+        "Open the fold at point recursively",
+    ),
+    ci(
+        Command::Fold(FoldCmd::Close),
+        "fold-close",
+        "Close the fold at point (or its parent)",
+    ),
+    ci(
+        Command::Fold(FoldCmd::CloseRec),
+        "fold-close-rec",
+        "Close the fold at point recursively",
+    ),
+    ci(
+        Command::Fold(FoldCmd::OpenAll),
+        "fold-open-all",
+        "Open all folds",
+    ),
+    ci(
+        Command::Fold(FoldCmd::CloseAll),
+        "fold-close-all",
+        "Close all folds",
+    ),
+    ci(
+        Command::Fold(FoldCmd::OpenLevel),
+        "fold-less",
+        "Open one more level of folds",
+    ),
+    ci(
+        Command::Fold(FoldCmd::CloseLevel),
+        "fold-more",
+        "Close one more level of folds",
     ),
     ci(
         Command::Stage,
